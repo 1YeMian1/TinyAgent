@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 故事创作 — TinyLLM-Story</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar">
+    <div class="container">
+        <a href="index.html" class="nav-brand">
+            <span class="logo-icon">📖</span>
+            TinyLLM-Story
+        </a>
+        <div class="nav-links">
+            <a href="index.html">📚 故事库</a>
+            <a href="story-generate.html" class="active">✨ AI 创作</a>
+            <a href="assistant.html">🤖 AI 助手</a>
+            <a href="profile.html">👤 我的</a>
+        </div>
+        <div class="nav-user" id="nav-user-content">
+            <a href="login.html" class="btn-outline">登录</a>
+        </div>
+    </div>
+</nav>
+
+<!-- Generate Page -->
+<main class="generate-page">
+    <h1 class="page-title">✨ AI 故事创作</h1>
+    <p class="page-subtitle">输入你的创意，让 AI 为你生成独一无二的儿童故事</p>
+
+    <!-- Generate Form -->
+    <div class="generate-form">
+        <div class="form-row">
+            <div class="form-group">
+                <label><span class="label-icon">📝</span> 故事主题</label>
+                <input type="text" id="theme" placeholder="比如：勇敢的小兔子、会飞的房子...">
+            </div>
+            <div class="form-group">
+                <label><span class="label-icon">📂</span> 故事分类</label>
+                <select id="category">
+                    <option value="">自动判断</option>
+                    <option value="动物故事">🐱 动物故事</option>
+                    <option value="童话故事">🏰 童话故事</option>
+                    <option value="成长故事">🌱 成长故事</option>
+                    <option value="冒险故事">🗺️ 冒险故事</option>
+                    <option value="温馨故事">🌙 温馨故事</option>
+                    <option value="友谊故事">🤝 友谊故事</option>
+                    <option value="想象故事">✨ 想象故事</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label><span class="label-icon">🦸</span> 主角名称（可选）</label>
+                <input type="text" id="character" placeholder="比如：小明、小兔子朵朵...">
+            </div>
+            <div class="form-group">
+                <label><span class="label-icon">📏</span> 故事长度</label>
+                <div class="length-slider">
+                    <span style="font-size:13px;color:var(--text-secondary);">短</span>
+                    <input type="range" id="lengthSlider" min="1" max="3" value="2" oninput="updateLengthLabel()">
+                    <span style="font-size:13px;color:var(--text-secondary);">长</span>
+                    <span class="slider-value" id="lengthLabel">中篇</span>
+                </div>
+                <select id="length" style="display:none;">
+                    <option value="medium" selected>中篇 (~500字)</option>
+                    <option value="short">短篇 (~200字)</option>
+                    <option value="long">长篇 (~800字)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-row full">
+            <div class="form-group">
+                <label><span class="label-icon">💡</span> 额外要求（可选）</label>
+                <textarea id="extra" placeholder="比如：包含一个谜题、主角最后学会了分享、故事发生在海底世界..."></textarea>
+            </div>
+        </div>
+
+        <div class="form-row full">
+            <div class="form-group">
+                <label style="display:flex;align-items:center;gap:8px;">
+                    <input type="checkbox" id="genImages" checked style="width:auto;cursor:pointer;">
+                    同时生成故事配图（AI 插图）
+                </label>
+            </div>
+        </div>
+
+        <div class="submit-row">
+            <button class="btn btn-lg btn-primary" id="generateBtn" onclick="generateStory()">
+                ✨ 开始创作
+            </button>
+            <button class="btn btn-lg btn-outline" id="cancelBtn" onclick="cancelGeneration()" style="display:none;">
+                ⏹ 取消生成
+            </button>
+        </div>
+    </div>
+
+    <!-- Generation Progress -->
+    <div class="loading-spinner" id="generatingSpinner" style="display:none;">
+        <div class="spinner"></div>
+        <div class="spinner-text" id="generatingText">AI 正在创作故事...</div>
+    </div>
+
+    <!-- Generation Result -->
+    <div class="generate-result" id="generateResult">
+        <div class="result-header">
+            <h3>📖 <span id="resultTitle">AI 生成的故事</span></h3>
+            <div class="result-actions">
+                <button class="btn btn-sm btn-outline" onclick="regenerateStory()">🔄 重新生成</button>
+                <button class="btn btn-sm btn-primary" onclick="saveStory()">💾 保存故事</button>
+            </div>
+        </div>
+        <div class="result-content" id="resultContent"></div>
+        <div class="generated-images" id="generatedImages" style="display:none;"></div>
+    </div>
+
+</main>
+
+<footer class="footer">
+    <div class="container">
+        <div class="footer-brand">📖 TinyLLM-Story</div>
+        <p>AI 驱动 · 儿童故事 · 智能创作 · 角色配音</p>
+        <p style="margin-top:8px;">© 2026 TinyLLM-Story. All rights reserved.</p>
+    </div>
+</footer>
+
+<script src="js/common.js"></script>
+<script src="js/api.js"></script>
+<script>
+// --- State ---
+let isGenerating = false;
+let generatedStory = null;
+let cancelRequested = false;
+let generationController = null;
+let stopTypewriter = null;
+
+// --- Length Slider ---
+function updateLengthLabel() {
+    const val = document.getElementById('lengthSlider').value;
+    const labels = { '1': '短篇 (~200字)', '2': '中篇 (~500字)', '3': '长篇 (~1000字)' };
+    const selectValues = { '1': 'short', '2': 'medium', '3': 'long' };
+    document.getElementById('lengthLabel').textContent = labels[val];
+    document.getElementById('length').value = selectValues[val];
+}
+
+// --- Typewriter effect ---
+function typewriter(el, text, speed, onDone) {
+    el.textContent = '';
+    el.classList.add('typing');
+    let i = 0;
+    const timer = setInterval(() => {
+        if (i < text.length) {
+            el.textContent += text[i];
+            i++;
+        } else {
+            clearInterval(timer);
+            el.classList.remove('typing');
+            if (onDone) onDone();
+        }
+    }, speed);
+    return () => { clearInterval(timer); el.classList.remove('typing'); };
+}
+
+// --- Generate Story ---
+async function generateStory() {
+    if (isGenerating) return;
+
+    const theme = document.getElementById('theme').value.trim();
+    if (!theme) {
+        Toast.error('请输入故事主题');
+        document.getElementById('theme').focus();
+        document.getElementById('theme').classList.add('input-shake');
+        setTimeout(() => document.getElementById('theme').classList.remove('input-shake'), 500);
+        return;
+    }
+
+    // Start generation
+    isGenerating = true;
+    cancelRequested = false;
+    generationController = new AbortController();
+    document.getElementById('generateBtn').style.display = 'none';
+    document.getElementById('cancelBtn').style.display = 'inline-flex';
+    document.getElementById('generatingSpinner').style.display = 'flex';
+    document.getElementById('generatingText').textContent = 'AI 正在构思故事...';
+    document.getElementById('generateResult').classList.remove('show');
+
+    // Progress status phrases while the request is running
+    const phrases = [
+        'AI 正在构思故事框架...',
+        '正在编织情节...',
+        '添加生动的细节...',
+        '润色语言表达...',
+    ];
+    let phraseIndex = 0;
+    const phraseInterval = setInterval(() => {
+        if (cancelRequested || !isGenerating) {
+            clearInterval(phraseInterval);
+            return;
+        }
+        phraseIndex = (phraseIndex + 1) % phrases.length;
+        document.getElementById('generatingText').textContent = phrases[phraseIndex];
+    }, 1500);
+
+    try {
+        const data = {
+            theme,
+            category: document.getElementById('category').value,
+            character: document.getElementById('character').value.trim(),
+            length: document.getElementById('length').value,
+            extra: document.getElementById('extra').value.trim(),
+            generate_images: document.getElementById('genImages').checked,
+            image_count: 3,
+        };
+
+        const result = await API.generate.create(data, { signal: generationController.signal });
+        generatedStory = result;
+
+        // Show result
+        document.getElementById('generateResult').classList.add('show');
+        document.getElementById('resultTitle').textContent = result.title || 'AI 生成的故事';
+
+        // Smooth scroll to result
+        setTimeout(() => {
+            document.getElementById('generateResult').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+
+        // Typewriter effect
+        const contentEl = document.getElementById('resultContent');
+        const text = result.content || '';
+        stopTypewriter = typewriter(contentEl, text, 18, () => {
+            renderGeneratedImages(result.images || []);
+            if (result.images_message) Toast.info(result.images_message);
+        });
+
+        Toast.success('故事生成完成！✨');
+    } catch (err) {
+        console.error('Generate Error:', err);
+        if (!cancelRequested && err.name !== 'AbortError') {
+            Toast.error('故事生成失败: ' + (err.message || '请稍后重试'));
+        }
+    } finally {
+        clearInterval(phraseInterval);
+        isGenerating = false;
+        document.getElementById('generatingSpinner').style.display = 'none';
+        document.getElementById('generateBtn').style.display = 'inline-flex';
+        document.getElementById('cancelBtn').style.display = 'none';
+        generationController = null;
+    }
+}
+
+// --- Render backend-provided images ---
+function renderGeneratedImages(images) {
+    const imgContainer = document.getElementById('generatedImages');
+    if (!Array.isArray(images) || images.length === 0) {
+        imgContainer.innerHTML = '';
+        imgContainer.style.display = 'none';
+        return;
+    }
+    imgContainer.innerHTML = images.map((img, i) => `
+        <div class="gen-image" data-image-index="${i}" id="genImg${i}">
+            <img src="${escapeHtml(img)}" alt="故事配图 ${i + 1}" loading="lazy">
+            <div class="select-overlay">
+                <div class="select-check">✓</div>
+            </div>
+        </div>
+    `).join('');
+    imgContainer.style.display = 'grid';
+    imgContainer.querySelectorAll('.gen-image').forEach(el => {
+        el.addEventListener('click', () => selectImage(Number(el.dataset.imageIndex)));
+    });
+}
+
+// --- Cancel ---
+function cancelGeneration() {
+    cancelRequested = true;
+    if (generationController) generationController.abort();
+    if (stopTypewriter) stopTypewriter();
+    stopTypewriter = null;
+    Toast.info('已取消生成');
+    resetGenerateUI();
+}
+
+function resetGenerateUI() {
+    isGenerating = false;
+    document.getElementById('generatingSpinner').style.display = 'none';
+    document.getElementById('generateBtn').style.display = 'inline-flex';
+    document.getElementById('cancelBtn').style.display = 'none';
+}
+
+// --- Regenerate ---
+function regenerateStory() {
+    document.getElementById('generateResult').classList.remove('show');
+    document.getElementById('resultContent').textContent = '';
+    document.getElementById('generatedImages').innerHTML = '';
+    document.getElementById('generatedImages').style.display = 'none';
+    generatedStory = null;
+    generateStory();
+}
+
+// --- Save Story ---
+function saveStory() {
+    if (!Auth.isLoggedIn()) {
+        Toast.error('请先登录后再保存故事');
+        setTimeout(() => { window.location.href = 'login.html'; }, 1000);
+        return;
+    }
+
+    if (!generatedStory || !generatedStory.id) {
+        Toast.error('没有可保存的故事');
+        return;
+    }
+    API.stories.toggleFavorite(generatedStory.id)
+        .then(() => Toast.success('故事已保存到你的收藏 ✨'))
+        .catch(err => Toast.error('保存失败: ' + err.message));
+}
+
+// --- Select Image ---
+function selectImage(index) {
+    document.querySelectorAll('.gen-image').forEach(el => el.classList.remove('selected'));
+    const target = document.getElementById('genImg' + index);
+    if (target) target.classList.add('selected');
+    Toast.success('已选择第 ' + (index + 1) + ' 张配图');
+}
+
+// --- Init ---
+document.addEventListener('DOMContentLoaded', () => {
+    updateLengthLabel();
+    document.getElementById('theme').focus();
+    if (!Auth.isLoggedIn()) {
+        const imageLabel = document.querySelector('#genImages')?.parentElement;
+        if (imageLabel) imageLabel.append('（登录后保存配图）');
+    }
+    // Support Enter key to generate from any text field
+    document.querySelectorAll('.generate-form input[type="text"]').forEach(el => {
+        el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !isGenerating) generateStory();
+        });
+    });
+});
+</script>
+</body>
+</html>

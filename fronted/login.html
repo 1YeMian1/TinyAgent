@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 — TinyLLM-Story</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-header">
+            <div class="auth-logo">📖</div>
+            <h2>欢迎回来</h2>
+            <p>登录你的 TinyLLM-Story 账号</p>
+        </div>
+
+        <form id="loginForm" onsubmit="handleLogin(event)" novalidate>
+            <div class="form-group" id="emailGroup">
+                <label>邮箱地址</label>
+                <div class="input-wrapper">
+                    <span class="input-icon">📧</span>
+                    <input type="email" id="email" placeholder="请输入邮箱地址" required>
+                </div>
+                <span class="error-text" id="emailError"></span>
+            </div>
+
+            <div class="form-group" id="passwordGroup">
+                <label>密码</label>
+                <div class="input-wrapper">
+                    <span class="input-icon">🔒</span>
+                    <input type="password" id="password" placeholder="请输入密码" required>
+                </div>
+                <span class="error-text" id="passwordError"></span>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary" id="loginBtn">
+                    登录
+                </button>
+            </div>
+        </form>
+
+        <div class="form-divider">或者</div>
+
+        <div class="form-switch">
+            还没有账号？<a href="register.html">立即注册</a>
+        </div>
+    </div>
+</div>
+
+<script src="js/common.js"></script>
+<script src="js/api.js"></script>
+<script>
+async function handleLogin(e) {
+    e.preventDefault();
+
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value.trim();
+    const btn = document.getElementById('loginBtn');
+
+    // Reset
+    document.querySelectorAll('.form-group').forEach(g => g.classList.remove('error'));
+    document.getElementById('emailError').textContent = '';
+    document.getElementById('passwordError').textContent = '';
+
+    // Validate
+    let hasError = false;
+    if (!email) {
+        document.getElementById('emailGroup').classList.add('error');
+        document.getElementById('emailError').textContent = '请输入邮箱地址';
+        hasError = true;
+    }
+    if (!password) {
+        document.getElementById('passwordGroup').classList.add('error');
+        document.getElementById('passwordError').textContent = '请输入密码';
+        hasError = true;
+    }
+    if (hasError) return;
+
+    // Submit
+    btn.disabled = true;
+    btn.textContent = '登录中...';
+
+    try {
+        const result = await API.auth.login(email, password);
+        Auth.login(result);
+        Toast.success('登录成功！欢迎回来 🎉');
+        setTimeout(() => {
+            window.location.href = 'index.html';
+        }, 800);
+    } catch (err) {
+        Toast.error(err.message || '登录失败，请重试');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '登录';
+    }
+}
+</script>
+</body>
+</html>

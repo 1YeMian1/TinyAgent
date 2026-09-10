@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 智能助手 — TinyLLM-Story</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar">
+    <div class="container">
+        <a href="index.html" class="nav-brand">
+            <span class="logo-icon">📖</span>
+            TinyLLM-Story
+        </a>
+        <div class="nav-links">
+            <a href="index.html">📚 故事库</a>
+            <a href="story-generate.html">✨ AI 创作</a>
+            <a href="assistant.html" class="active">🤖 AI 助手</a>
+            <a href="profile.html">👤 我的</a>
+        </div>
+        <div class="nav-user" id="nav-user-content">
+            <a href="login.html" class="btn-outline">登录</a>
+        </div>
+    </div>
+</nav>
+
+<!-- Assistant Page -->
+<main class="assistant-page">
+    <!-- 左侧：会话列表 -->
+    <aside class="chat-sidebar">
+        <button class="btn btn-primary btn-new-chat" id="newChatBtn" onclick="newSession()">
+            ➕ 新建对话
+        </button>
+        <div class="session-list" id="sessionList">
+            <div class="session-empty">加载中…</div>
+        </div>
+    </aside>
+
+    <!-- 右侧：聊天区 -->
+    <section class="chat-main">
+        <div class="chat-messages" id="chatMessages">
+            <!-- 欢迎语 -->
+            <div class="chat-welcome" id="chatWelcome">
+                <div class="welcome-icon">🤖</div>
+                <h2>你好！我是故事小助手</h2>
+                <p>我可以基于平台故事库回答问题、帮你创作新故事，还能统计字数、查找故事。</p>
+                <div class="welcome-chips">
+                    <button class="example-chip" onclick="sendExample('小熊勇敢的故事讲了什么？')">🐻 小熊勇敢的故事讲了什么？</button>
+                    <button class="example-chip" onclick="sendExample('帮我写一个关于分享的小狐狸故事')">🦊 帮我写一个关于分享的小狐狸故事</button>
+                    <button class="example-chip" onclick="sendExample('故事库里有没有关于友谊的故事？')">🤝 故事库里有没有关于友谊的故事？</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 输入区 -->
+        <div class="chat-input-bar">
+            <textarea id="chatInput" rows="1" placeholder="输入你的问题，Enter 发送，Shift+Enter 换行…"></textarea>
+            <button class="btn btn-primary btn-send" id="sendBtn" onclick="handleSend()">发送</button>
+        </div>
+    </section>
+</main>
+
+<footer class="footer">
+    <div class="container">
+        <div class="footer-brand">📖 TinyLLM-Story</div>
+        <p>AI 驱动 · 儿童故事 · 智能创作 · 角色配音</p>
+        <p style="margin-top:8px;">© 2026 TinyLLM-Story. All rights reserved.</p>
+    </div>
+</footer>
+
+<script src="js/common.js"></script>
+<script src="js/api.js"></script>
+<script>
+// --- State ---
+let currentSessionId = null;
+let isSending = false;
+
+const EXAMPLE_TOOL_LABELS = {
+    retrieve_story_knowledge: '🔍 检索故事知识库',
+    search_stories: '🔎 搜索故事库',
+    get_story: '📖 读取故事正文',
+    count_story_words: '📏 统计故事字数',
+    create_story: '✨ 创作新故事',
+};
+
+// --- 会话列表 ---
+async function loadSessions(selectId = null) {
+    const listEl = document.getElementById('sessionList');
+    try {
+        const sessions = await API.assistant.listSessions();
+        if (!sessions.length) {
+            listEl.innerHTML = '<div class="session-empty">还没有对话，点击上方开始吧</div>';
+            return;
+        }
+        listEl.innerHTML = sessions.map(s => `
+            <div class="session-item ${s.id === currentSessionId ? 'active' : ''}" data-id="${s.id}">
+                <div class="session-item-main" onclick="openSession(${s.id})">
+                    <div class="session-title">${escapeHtml(s.title || '新会话')}</div>
+                    <div class="session-meta">${s.message_count} 条消息 · ${formatDate(s.updated_at)}</div>
+                </div>
+                <button class="session-delete" title="删除对话" onclick="deleteSession(${s.id}, event)">🗑️</button>
+            </div>
+        `).join('');
+        if (selectId) currentSessionId = selectId;
+    } catch (err) {
+        listEl.innerHTML = '<div class="session-empty">加载失败，请刷新重试</div>';
+    }
+}
+
+async function newSession() {
+    try {
+        const session = await API.assistant.createSession();
+        currentSessionId = session.id;
+        resetChatToWelcome();
+        loadSessions();
+        document.getElementById('chatInput').focus();
+    } catch (err) {
+        Toast.error('创建对话失败: ' + err.message);
+    }
+}
+
+async function openSession(id) {
+    try {
+        const detail = await API.assistant.getSession(id);
+        currentSessionId = id;
+        const box = document.getElementById('chatMessages');
+        box.innerHTML = '';
+        (detail.messages || []).forEach(m => {
+            if (m.role === 'user') {
+                appendUserBubble(m.content);
+            } else {
+                appendAssistantBubble({
+                    answer: m.content,
+                    tool_steps: m.tool_steps || [],
+                    references: m.references || [],
+                    mode: m.mode || 'simulation',
+                });
+            }
+        });
+        scrollToBottom();
+        loadSessions();
+    } catch (err) {
+        Toast.error('打开对话失败: ' + err.message);
+    }
+}
+
+async function deleteSession(id, event) {
+    if (event) event.stopPropagation();
+    if (!confirm('确定删除这个对话吗？删除后不可恢复。')) return;
+    try {
+        await API.assistant.deleteSession(id);
+        if (id === currentSessionId) {
+            currentSessionId = null;
+            resetChatToWelcome();
+        }
+        Toast.success('对话已删除');
+        loadSessions();
+    } catch (err) {
+        Toast.error('删除失败: ' + err.message);
+    }
+}
+
+function resetChatToWelcome() {
+    const box = document.getElementById('chatMessages');
+    box.innerHTML = `
+        <div class="chat-welcome" id="chatWelcome">
+            <div class="welcome-icon">🤖</div>
+            <h2>你好！我是故事小助手</h2>
+            <p>我可以基于平台故事库回答问题、帮你创作新故事，还能统计字数、查找故事。</p>
+            <div class="welcome-chips">
+                <button class="example-chip" onclick="sendExample('小熊勇敢的故事讲了什么？')">🐻 小熊勇敢的故事讲了什么？</button>
+                <button class="example-chip" onclick="sendExample('帮我写一个关于分享的小狐狸故事')">🦊 帮我写一个关于分享的小狐狸故事</button>
+                <button class="example-chip" onclick="sendExample('故事库里有没有关于友谊的故事？')">🤝 故事库里有没有关于友谊的故事？</button>
+            </div>
+        </div>`;
+}
+
+// --- 发消息 ---
+function sendExample(text) {
+    document.getElementById('chatInput').value = text;
+    handleSend();
+}
+
+async function handleSend() {
+    if (isSending) return;
+    const input = document.getElementById('chatInput');
+    const message = input.value.trim();
+    if (!message) return;
+
+    // 首次发消息时自动建会话
+    if (!currentSessionId) {
+        try {
+            const session = await API.assistant.createSession();
+            currentSessionId = session.id;
+        } catch (err) {
+            Toast.error('创建对话失败: ' + err.message);
+            return;
+        }
+    }
+
+    isSending = true;
+    document.getElementById('sendBtn').disabled = true;
+    input.value = '';
+    input.style.height = 'auto';
+
+    const welcome = document.getElementById('chatWelcome');
+    if (welcome) welcome.remove();
+
+    appendUserBubble(message);
+    const loadingEl = appendLoadingBubble();
+    scrollToBottom();
+
+    try {
+        const result = await API.assistant.chat(currentSessionId, message);
+        loadingEl.remove();
+        appendAssistantBubble(result);
+        scrollToBottom();
+        loadSessions();
+    } catch (err) {
+        loadingEl.remove();
+        appendAssistantBubble({
+            answer: '抱歉，处理你的消息时出错了：' + (err.message || '请稍后重试'),
+            tool_steps: [],
+            references: [],
+            mode: 'error',
+        });
+        scrollToBottom();
+    } finally {
+        isSending = false;
+        document.getElementById('sendBtn').disabled = false;
+        input.focus();
+    }
+}
+
+// --- 渲染消息气泡 ---
+function appendUserBubble(text) {
+    const box = document.getElementById('chatMessages');
+    const el = document.createElement('div');
+    el.className = 'chat-bubble user-bubble';
+    el.textContent = text;
+    box.appendChild(el);
+}
+
+function appendLoadingBubble() {
+    const box = document.getElementById('chatMessages');
+    const el = document.createElement('div');
+    el.className = 'chat-bubble assistant-bubble';
+    el.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+    box.appendChild(el);
+    return el;
+}
+
+function appendAssistantBubble(data) {
+    const box = document.getElementById('chatMessages');
+    const el = document.createElement('div');
+    el.className = 'chat-bubble assistant-bubble';
+
+    const modeBadge = data.mode === 'real'
+        ? '<span class="mode-badge mode-real">🤖 AI 模型</span>'
+        : data.mode === 'error'
+            ? '<span class="mode-badge mode-error">⚠️ 出错了</span>'
+            : '<span class="mode-badge mode-sim">🎓 教学模拟</span>';
+
+    const steps = Array.isArray(data.tool_steps) ? data.tool_steps : [];
+    const refs = Array.isArray(data.references) ? data.references : [];
+
+    let stepsHtml = '';
+    if (steps.length) {
+        stepsHtml = `
+        <details class="tool-steps">
+            <summary>🔧 工具调用步骤（${steps.length}）</summary>
+            <ol class="step-list">
+                ${steps.map((s, i) => `
+                    <li>
+                        <div class="step-name">${i + 1}. ${EXAMPLE_TOOL_LABELS[s.tool] || s.tool}</div>
+                        <div class="step-args">参数：${escapeHtml(JSON.stringify(s.args || {}))}</div>
+                        ${s.result ? `<div class="step-result">结果：${escapeHtml(String(s.result).slice(0, 150))}${String(s.result).length > 150 ? '…' : ''}</div>` : ''}
+                    </li>`).join('')}
+            </ol>
+        </details>`;
+    }
+
+    let refsHtml = '';
+    if (refs.length) {
+        refsHtml = `
+        <div class="ref-list">
+            <span class="ref-label">📚 引用来源：</span>
+            ${refs.map(r => `<a class="ref-chip" href="story-detail.html?id=${r.story_id}" target="_blank">《${escapeHtml(r.title || ('故事 ' + r.story_id))}》</a>`).join('')}
+        </div>`;
+    }
+
+    el.innerHTML = `
+        <div class="bubble-head">${modeBadge}</div>
+        <div class="bubble-content"></div>
+        ${stepsHtml}
+        ${refsHtml}`;
+    el.querySelector('.bubble-content').textContent = data.answer || '';
+    box.appendChild(el);
+}
+
+function scrollToBottom() {
+    const box = document.getElementById('chatMessages');
+    box.scrollTop = box.scrollHeight;
+}
+
+// --- Init ---
+document.addEventListener('DOMContentLoaded', () => {
+    if (!Auth.requireAuth()) return;
+    loadSessions();
+    const input = document.getElementById('chatInput');
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSend();
+        }
+    });
+    input.addEventListener('input', () => {
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    });
+});
+</script>
+</body>
+</html>

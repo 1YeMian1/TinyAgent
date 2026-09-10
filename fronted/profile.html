@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人中心 — TinyLLM-Story</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar">
+    <div class="container">
+        <a href="index.html" class="nav-brand">
+            <span class="logo-icon">📖</span>
+            TinyLLM-Story
+        </a>
+        <div class="nav-links">
+            <a href="index.html">📚 故事库</a>
+            <a href="story-generate.html">✨ AI 创作</a>
+            <a href="assistant.html">🤖 AI 助手</a>
+            <a href="profile.html" class="active">👤 我的</a>
+        </div>
+        <div class="nav-user" id="nav-user-content"></div>
+    </div>
+</nav>
+
+<!-- Profile Page -->
+<main class="profile-page">
+    <!-- Profile Header -->
+    <div class="profile-header">
+        <div class="profile-avatar" id="profileAvatar">👤</div>
+        <div class="profile-info">
+            <h2 id="profileName">故事小达人</h2>
+            <p id="profileEmail">user@example.com</p>
+            <div class="profile-stats">
+                <div class="profile-stat">
+                    <div class="stat-num" id="statFavorites">0</div>
+                    <div class="stat-label">收藏故事</div>
+                </div>
+                <div class="profile-stat">
+                    <div class="stat-num" id="statGenerated">0</div>
+                    <div class="stat-label">生成故事</div>
+                </div>
+                <div class="profile-stat">
+                    <div class="stat-num" id="statListened">0</div>
+                    <div class="stat-label">聆听故事</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="tab-nav">
+        <button class="active" onclick="switchTab('favorites', this)">❤️ 我的收藏</button>
+        <button onclick="switchTab('history', this)">📜 生成历史</button>
+    </div>
+
+    <!-- Content Area -->
+    <div id="tabContent"></div>
+
+    <!-- Loading -->
+    <div class="loading-spinner" id="loadingSpinner" style="display:none;">
+        <div class="spinner"></div>
+        <div class="spinner-text">正在加载...</div>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" id="emptyState" style="display:none;">
+        <div class="empty-icon" id="emptyIcon">📭</div>
+        <h3 id="emptyTitle">还没有收藏的故事</h3>
+        <p id="emptyDesc">去故事库听听故事，或者创作一个属于自己的故事吧</p>
+        <a href="index.html" class="btn btn-primary" id="emptyAction">📚 浏览故事库</a>
+    </div>
+
+</main>
+
+<footer class="footer">
+    <div class="container">
+        <div class="footer-brand">📖 TinyLLM-Story</div>
+        <p>AI 驱动 · 儿童故事 · 智能创作 · 角色配音</p>
+        <p style="margin-top:8px;">© 2026 TinyLLM-Story. All rights reserved.</p>
+    </div>
+</footer>
+
+<script src="js/common.js"></script>
+<script src="js/api.js"></script>
+<script>
+// Auth Guard
+if (!Auth.isLoggedIn()) {
+    window.location.href = 'login.html';
+}
+
+// --- State ---
+let currentTab = 'favorites';
+let favoritesData = [];
+let historyData = [];
+
+// --- Load Profile ---
+function loadProfile() {
+    const user = Auth.getUser();
+    if (!user) return;
+
+    document.getElementById('profileName').textContent = user.username || '故事小达人';
+    document.getElementById('profileEmail').textContent = user.email || '';
+    document.getElementById('profileAvatar').textContent = (user.username || '用')[0];
+
+    API.auth.profile().then(result => {
+        const stats = result.stats || {};
+        document.getElementById('statFavorites').textContent = stats.favorites ?? 0;
+        document.getElementById('statGenerated').textContent = stats.generated ?? 0;
+        document.getElementById('statListened').textContent = stats.listened ?? 0;
+    }).catch(err => Toast.error('加载个人统计失败: ' + err.message));
+}
+
+// --- Switch Tab ---
+async function switchTab(tab, btnEl) {
+    currentTab = tab;
+
+    // Update tab active state
+    document.querySelectorAll('.tab-nav button').forEach(b => b.classList.remove('active'));
+    if (btnEl) btnEl.classList.add('active');
+
+    // Hide all
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('tabContent').innerHTML = '';
+
+    // Load data
+    document.getElementById('loadingSpinner').style.display = 'flex';
+
+    try {
+        let stories;
+        if (tab === 'favorites') {
+            const result = await API.stories.favorites();
+            stories = result.stories;
+            favoritesData = stories;
+            
+            document.getElementById('emptyIcon').textContent = '💔';
+            document.getElementById('emptyTitle').textContent = '还没有收藏的故事';
+            document.getElementById('emptyDesc').textContent = '去故事库听听故事，点击收藏按钮把它们加入你的收藏吧';
+            document.getElementById('emptyAction').href = 'index.html';
+            document.getElementById('emptyAction').textContent = '📚 浏览故事库';
+        } else {
+            const result = await API.stories.history();
+            stories = result.stories;
+            historyData = stories;
+
+            document.getElementById('emptyIcon').textContent = '📝';
+            document.getElementById('emptyTitle').textContent = '还没有生成记录';
+            document.getElementById('emptyDesc').textContent = '开始你的第一次 AI 故事创作吧';
+            document.getElementById('emptyAction').href = 'story-generate.html';
+            document.getElementById('emptyAction').textContent = '✨ 开始创作';
+        }
+
+        if (stories.length === 0) {
+            document.getElementById('emptyState').style.display = 'block';
+        } else {
+            renderStoryList(stories);
+        }
+    } catch (err) {
+        Toast.error('加载失败: ' + err.message);
+    } finally {
+        document.getElementById('loadingSpinner').style.display = 'none';
+    }
+}
+
+// --- Render Story List ---
+function renderStoryList(stories) {
+    const html = `
+        <div class="story-grid">
+            ${stories.map((s, i) => `
+                <div class="card story-card" data-id="${s.id}" style="animation: fadeInUp 0.5s ease ${i * 0.05}s both;">
+                    <div class="card-cover ${s.coverType || 'c1'}">
+                        <span class="cover-emoji">${s.emoji || '📖'}</span>
+                        <span class="category-badge">${escapeHtml(s.category || '')}</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-title">${escapeHtml(s.title)}</div>
+                        <div class="card-desc">${escapeHtml(s.summary)}</div>
+                        <div class="card-footer">
+                            <span>📝 ${s.words} 字</span>
+                            <span>${formatDate(s.date)}</span>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+    document.getElementById('tabContent').innerHTML = html;
+    document.querySelectorAll('#tabContent .story-card').forEach(card => {
+        card.addEventListener('click', () => openStory(Number(card.dataset.id)));
+    });
+}
+
+// --- Open Story ---
+function openStory(id) {
+    window.location.href = `story-detail.html?id=${id}`;
+}
+
+// --- Init ---
+document.addEventListener('DOMContentLoaded', () => {
+    loadProfile();
+    const firstTab = document.querySelector('.tab-nav button');
+    if (firstTab) switchTab('favorites', firstTab);
+});
+</script>
+</body>
+</html>

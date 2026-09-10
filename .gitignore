@@ -1,0 +1,104 @@
+# =========================
+# TinyAgent / TinyLLM-Story
+# 忽略隐私文件、密钥、虚拟环境与库缓存
+# =========================
+
+# ----- 环境变量与密钥 -----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+credentials.json
+
+# ----- 本地数据库与用户数据 -----
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+tinyllm.db
+
+# ----- Python 虚拟环境 / 依赖库 -----
+.venv/
+venv/
+env/
+ENV/
+virtualenv/
+pip-wheel-metadata/
+*.egg-info/
+*.egg
+.Python
+site-packages/
+
+# ----- Python 字节码与缓存 -----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.cache/
+
+# ----- HuggingFace / PyTorch / 模型权重 -----
+.cache/huggingface/
+.cache/torch/
+transformers_cache/
+hf_cache/
+*.bin
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.h5
+
+# ----- RAG 向量索引（可由故事库重建） -----
+data/story_faiss_index/
+**/index.faiss
+**/index.pkl
+
+# ----- 运行时生成的图片 -----
+fronted/generated/
+generated/
+
+# ----- 日志与实验产物 -----
+logs/
+*.log
+test/logs/
+test/output/
+test/detection_result.jpg
+events.out.tfevents.*
+
+# ----- IDE / 编辑器 -----
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ----- 操作系统 -----
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ----- 其他 -----
+*.bak
+*.tmp
+*.temp
+dist/
+build/
+.ipynb_checkpoints/

@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TinyLLM-Story — AI 儿童故事平台</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar">
+    <div class="container">
+        <a href="index.html" class="nav-brand">
+            <span class="logo-icon">📖</span>
+            TinyLLM-Story
+        </a>
+        <div class="nav-links">
+            <a href="index.html" class="active">📚 故事库</a>
+            <a href="story-generate.html">✨ AI 创作</a>
+            <a href="assistant.html">🤖 AI 助手</a>
+            <a href="profile.html">👤 我的</a>
+        </div>
+        <div class="nav-user" id="nav-user-content">
+            <a href="login.html" class="btn-outline">登录</a>
+        </div>
+    </div>
+</nav>
+
+<!-- Hero Section -->
+<section class="hero">
+    <!-- Floating decorations -->
+    <span class="float-decor">🌟</span>
+    <span class="float-decor">📚</span>
+    <span class="float-decor">🎨</span>
+    <span class="float-decor">🔊</span>
+
+    <div class="container">
+        <div class="hero-content">
+            <h1 class="hero-title">
+                用 <span class="highlight">AI</span> 为每个孩子<br>创造独一无二的故事世界
+            </h1>
+            <p class="hero-desc">
+                浏览精选故事库、一键生成专属童话、自动配图、选择经典动画角色声音播放 —— 一站式儿童故事创作与聆听平台
+            </p>
+            <div class="hero-actions">
+                <a href="story-generate.html" class="btn btn-lg btn-primary">✨ 开始创作故事</a>
+                <a href="#stories" class="btn btn-lg btn-outline">📚 浏览故事库</a>
+            </div>
+        </div>
+
+        <div class="hero-features">
+            <div class="hero-feature">
+                <div class="hf-icon">🤖</div>
+                <div class="hf-text">
+                    <strong>AI 故事生成</strong>
+                    <span>自定义主题 · 七种分类</span>
+                </div>
+            </div>
+            <div class="hero-feature">
+                <div class="hf-icon">🎨</div>
+                <div class="hf-text">
+                    <strong>智能配图</strong>
+                    <span>故事插图 · 儿童画风</span>
+                </div>
+            </div>
+            <div class="hero-feature">
+                <div class="hf-icon">🔊</div>
+                <div class="hf-text">
+                    <strong>角色配音</strong>
+                    <span>经典动画 · 多角色朗读</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Story Library -->
+<section class="page-section" id="stories">
+    <div class="container">
+        <div class="section-header">
+            <div>
+                <h2 class="section-title"><span class="icon">📚</span> 故事图书馆</h2>
+                <p class="section-subtitle">精选优质儿童故事，每周更新</p>
+            </div>
+            <div class="search-bar">
+                <input type="text" id="searchInput" placeholder="搜索故事标题...">
+                <button>🔍</button>
+            </div>
+        </div>
+
+        <!-- Category Tabs -->
+        <div class="category-tabs" id="categoryTabs" style="margin-bottom:28px;"></div>
+
+        <!-- Story Grid -->
+        <div class="story-grid" id="storyGrid"></div>
+
+        <!-- Loading -->
+        <div class="loading-spinner" id="loadingSpinner" style="display:none;">
+            <div class="spinner"></div>
+            <div class="spinner-text">正在加载故事...</div>
+        </div>
+
+        <!-- Empty -->
+        <div class="empty-state" id="emptyState" style="display:none;">
+            <div class="empty-icon">📭</div>
+            <h3>没有找到匹配的故事</h3>
+            <p>试试换个搜索词，或者去创作一个全新的故事吧</p>
+            <a href="story-generate.html" class="btn btn-primary">✨ AI 创作故事</a>
+        </div>
+    </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+    <div class="container">
+        <div class="footer-brand">📖 TinyLLM-Story</div>
+        <p>AI 驱动 · 儿童故事 · 智能创作 · 角色配音</p>
+        <p style="margin-top:8px;">© 2026 TinyLLM-Story. All rights reserved.</p>
+    </div>
+</footer>
+
+<script src="js/common.js"></script>
+<script src="js/api.js"></script>
+<script>
+// --- State ---
+let currentCategory = '';
+let allStories = [];
+let categories = [];
+
+// --- Render Category Tabs ---
+function renderCategories() {
+    const tabs = categories.map(cat => `
+        <button class="category-tab ${currentCategory === cat.key ? 'active' : ''}"
+                data-category="${cat.key}">
+                ${escapeHtml(cat.label)}
+        </button>
+    `).join('');
+    const container = document.getElementById('categoryTabs');
+    container.innerHTML = tabs;
+    container.querySelectorAll('.category-tab').forEach(btn => {
+        btn.addEventListener('click', () => selectCategory(btn.dataset.category));
+    });
+}
+
+// --- Select Category ---
+function selectCategory(key) {
+    currentCategory = key;
+    renderCategories();
+    filterStories();
+}
+
+// --- Render Story Cards ---
+function renderStories(stories) {
+    const grid = document.getElementById('storyGrid');
+    if (stories.length === 0) {
+        grid.innerHTML = '';
+        document.getElementById('emptyState').style.display = 'block';
+        return;
+    }
+    document.getElementById('emptyState').style.display = 'none';
+
+    grid.innerHTML = stories.map((s, i) => `
+        <div class="card story-card" data-id="${s.id}" style="animation: fadeInUp 0.5s ease ${i * 0.05}s both;">
+            <div class="card-cover ${s.coverType || 'c1'}">
+                <span class="cover-emoji">${s.emoji || '📖'}</span>
+                <span class="category-badge">${escapeHtml(s.category || '')}</span>
+                <span class="voice-count">🔊 ${s.voices ? s.voices.length : 0}种声音</span>
+            </div>
+            <div class="card-body">
+                <div class="card-title">${escapeHtml(s.title)}</div>
+                <div class="card-desc">${escapeHtml(s.summary)}</div>
+                <div class="card-footer">
+                    <span>📝 ${s.words} 字</span>
+                    <span>${formatDate(s.date)}</span>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// --- Filter Stories ---
+async function filterStories() {
+    const search = document.getElementById('searchInput').value.trim();
+    document.getElementById('loadingSpinner').style.display = 'flex';
+
+    try {
+        const result = await API.stories.list({
+            category: currentCategory || undefined,
+            search: search || undefined,
+        });
+        allStories = result.stories;
+        renderStories(allStories);
+    } catch (err) {
+        Toast.error('加载故事失败: ' + err.message);
+    } finally {
+        document.getElementById('loadingSpinner').style.display = 'none';
+    }
+}
+
+// --- Open Story Detail ---
+function openStory(id) {
+    window.location.href = `story-detail.html?id=${id}`;
+}
+
+// --- Init ---
+document.addEventListener('DOMContentLoaded', () => {
+    Promise.all([API.categories.list(), API.stories.list()]).then(([categoryResult, storyResult]) => {
+        categories = categoryResult.categories || categoryResult;
+        allStories = storyResult.stories || [];
+        renderCategories();
+        renderStories(allStories);
+    }).catch(err => {
+        Toast.error('加载故事库失败: ' + err.message);
+    });
+    // Event delegation for story cards
+    document.getElementById('storyGrid').addEventListener('click', (e) => {
+        const card = e.target.closest('.story-card');
+        if (card && card.dataset.id) {
+            openStory(parseInt(card.dataset.id));
+        }
+    });
+    // Debounced search
+    document.getElementById('searchInput').addEventListener('input', debounce(filterStories, 300));
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>故事详情 — TinyLLM-Story</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar">
+    <div class="container">
+        <a href="index.html" class="nav-brand">
+            <span class="logo-icon">📖</span>
+            TinyLLM-Story
+        </a>
+        <div class="nav-links">
+            <a href="index.html">📚 故事库</a>
+            <a href="story-generate.html">✨ AI 创作</a>
+            <a href="assistant.html">🤖 AI 助手</a>
+            <a href="profile.html">👤 我的</a>
+        </div>
+        <div class="nav-user" id="nav-user-content">
+            <a href="login.html" class="btn-outline">登录</a>
+        </div>
+    </div>
+</nav>
+
+<!-- Story Detail -->
+<main class="story-detail-page">
+    <!-- Loading State -->
+    <div class="loading-spinner" id="loadingSpinner">
+        <div class="spinner"></div>
+        <div class="spinner-text">正在加载故事...</div>
+    </div>
+
+    <!-- Error State -->
+    <div class="empty-state" id="errorState" style="display:none;">
+        <div class="empty-icon">😢</div>
+        <h3 id="errorMessage">故事加载失败</h3>
+        <p>请检查链接是否正确，或返回首页重新选择</p>
+        <a href="index.html" class="btn btn-primary">返回故事库</a>
+    </div>
+
+    <!-- Story Content (hidden initially) -->
+    <div id="storyContent" style="display:none;">
+        <!-- Back & Meta -->
+        <div class="story-detail-header">
+            <a href="index.html" class="back-link">← 返回故事库</a>
+            <div class="story-meta">
+                <span class="badge category" id="storyCategory"></span>
+                <span class="badge length" id="storyWords"></span>
+                <span style="font-size:13px;color:var(--text-light);" id="storyDate"></span>
+            </div>
+            <h1 id="storyTitle"></h1>
+        </div>
+
+        <!-- Story Cover Image -->
+        <div class="story-cover-large c1" id="storyCover">
+            <span id="storyEmoji">📖</span>
+        </div>
+
+        <!-- Audio Player -->
+        <div class="player-section">
+            <!-- Voice Picker -->
+            <div class="voice-picker" id="voicePicker">
+                <label>🎙️ 选择朗读声音：</label>
+            </div>
+
+            <!-- Player Controls -->
+            <div class="player-controls">
+                <button class="btn-play" id="btnPlay" onclick="togglePlay()" title="播放/暂停">
+                    ▶️
+                </button>
+                <div class="progress-wrapper">
+                    <div class="time-display">
+                        <span id="currentTime">00:00</span>
+                        <span id="totalTime">03:45</span>
+                    </div>
+                    <div class="progress-bar" id="progressBar" onclick="seekAudio(event)">
+                        <div class="progress-filled" id="progressFilled"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Extra Controls -->
+            <div class="player-extra">
+                <button class="btn-icon active" id="btnFavorite" onclick="toggleFavorite()" title="收藏">
+                    🤍
+                </button>
+                <button class="btn-icon" id="btnDownload" onclick="downloadStory()" title="下载">
+                    📥
+                </button>
+                <span class="speed-label">
+                    语速 <span id="speedValue" style="margin-left:4px;">1.0x</span>
+                </span>
+                <button class="btn-icon" onclick="changeSpeed(-0.25)" title="减慢">🐢</button>
+                <button class="btn-icon" onclick="changeSpeed(0.25)" title="加快">🐇</button>
+            </div>
+        </div>
+
+        <!-- Story Images -->
+        <div class="story-images" id="storyImages"></div>
+
+        <!-- Story Text -->
+        <div class="story-content" id="storyText"></div>
+
+        <!-- Actions -->
+        <div class="story-actions">
+            <a href="story-generate.html" class="btn btn-primary">✨ AI 创作新故事</a>
+            <button class="btn btn-outline" onclick="window.print()">🖨️ 打印故事</button>
+        </div>
+    </div>
+</main>
+
+<footer class="footer">
+    <div class="container">
+        <div class="footer-brand">📖 TinyLLM-Story</div>
+        <p>AI 驱动 · 儿童故事 · 智能创作 · 角色配音</p>
+        <p style="margin-top:8px;">© 2026 TinyLLM-Story. All rights reserved.</p>
+    </div>
+</footer>
+
+<script src="js/common.js"></script>
+<script src="js/api.js"></script>
+<script>
+// --- State ---
+let storyData = null;
+let isPlaying = false;
+let isFavorited = false;
+let currentSpeed = 1.0;
+let currentVoice = null;
+let progressInterval = null;
+let playbackProgress = 0;
+let speechUtterance = null;
+
+// --- Load Story ---
+async function loadStory() {
+    const id = getQueryParam('id');
+    if (!id) {
+        showError('缺少故事 ID');
+        return;
+    }
+
+    document.getElementById('loadingSpinner').style.display = 'flex';
+
+    try {
+        storyData = await API.stories.get(id);
+        renderStory();
+    } catch (err) {
+        showError(err.message || '加载故事失败');
+    } finally {
+        document.getElementById('loadingSpinner').style.display = 'none';
+    }
+}
+
+function showError(msg) {
+    document.getElementById('errorState').style.display = 'block';
+    document.getElementById('errorMessage').textContent = msg;
+    document.getElementById('loadingSpinner').style.display = 'none';
+}
+
+// --- Render ---
+function renderStory() {
+    document.getElementById('storyContent').style.display = 'block';
+
+    document.getElementById('storyCategory').textContent = storyData.category;
+    document.getElementById('storyWords').textContent = `📝 ${storyData.words} 字`;
+    document.getElementById('storyDate').textContent = formatDate(storyData.date);
+    document.getElementById('storyTitle').textContent = storyData.title;
+
+    // Emoji map
+    const emojiMap = {
+        '动物故事': '🐱', '童话故事': '🏰', '成长故事': '🌱',
+        '冒险故事': '🗺️', '温馨故事': '🌙', '友谊故事': '🤝', '想象故事': '✨'
+    };
+    document.getElementById('storyEmoji').textContent = emojiMap[storyData.category] || '📖';
+
+    // Story text with paragraphs
+    const paragraphs = storyData.content.split('\n').filter(p => p.trim());
+    document.getElementById('storyText').innerHTML = paragraphs
+        .map(p => `<p class="story-paragraph">${escapeHtml(p.trim())}</p>`)
+        .join('');
+
+    // Images
+    if (storyData.images && storyData.images.length > 0) {
+        document.getElementById('storyImages').innerHTML = storyData.images
+            .map(img => `<img src="${escapeHtml(img)}" alt="故事配图" loading="lazy">`)
+            .join('');
+        document.getElementById('storyImages').style.display = 'grid';
+    } else {
+        document.getElementById('storyImages').style.display = 'none';
+    }
+
+    // Voices
+    if (!currentVoice && storyData.voices && storyData.voices.length > 0) {
+        currentVoice = storyData.voices[0].id;
+    }
+    renderVoices();
+
+    // Time estimate (avg 4 chars/sec reading speed)
+    const estSeconds = Math.max(1, Math.round(storyData.words / 4));
+    document.getElementById('totalTime').textContent = formatTime(estSeconds);
+
+    // Page title
+    document.title = `${storyData.title} — TinyLLM-Story`;
+}
+
+// --- Voices ---
+function renderVoices() {
+    const voices = storyData.voices || [];
+    const container = document.getElementById('voicePicker');
+
+    container.innerHTML = '<label>🎙️ 选择朗读声音：</label>';
+
+    voices.forEach(v => {
+        const chip = document.createElement('span');
+        chip.className = `voice-chip ${v.id === currentVoice ? 'active' : ''}`;
+        chip.innerHTML = `<span class="char-avatar">${escapeHtml(v.avatar || '🎙️')}</span> ${escapeHtml(v.name || '标准旁白')}`;
+        chip.onclick = () => selectVoice(v.id);
+        container.appendChild(chip);
+    });
+}
+
+function selectVoice(voiceId) {
+    currentVoice = voiceId;
+    if (isPlaying) {
+        stopPlay();
+        Toast.info(`已切换为 ${getVoiceName(voiceId)} 的声音`);
+    }
+    renderVoices();
+}
+
+function getVoiceName(id) {
+    const v = (storyData.voices || []).find(x => x.id === id);
+    return v ? v.name : '标准旁白';
+}
+
+// --- Playback ---
+function togglePlay() {
+    if (isPlaying) {
+        stopPlay();
+    } else {
+        startPlay();
+    }
+}
+
+function startPlay() {
+    const btn = document.getElementById('btnPlay');
+    isPlaying = true;
+    btn.textContent = '⏸️';
+    playbackProgress = 0;
+
+    Toast.info(`正在用 ${getVoiceName(currentVoice)} 的声音朗读...`);
+
+    // Use the browser's local speech synthesis; no audio service is required.
+    if ('speechSynthesis' in window) {
+        speechUtterance = new SpeechSynthesisUtterance(storyData.content);
+        speechUtterance.lang = 'zh-CN';
+        speechUtterance.rate = currentSpeed;
+        speechUtterance.onend = () => {
+            playbackProgress = 100;
+            updateProgress();
+            stopPlay();
+            Toast.success('故事播放完毕 🎉');
+        };
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(speechUtterance);
+    }
+    const estSeconds = Math.max(1, Math.round(storyData.words / 4));
+    const intervalMs = 200;
+
+    progressInterval = setInterval(() => {
+        playbackProgress += intervalMs / 1000 / estSeconds * 100;
+        if (playbackProgress >= 100) {
+            playbackProgress = 100;
+            stopPlay();
+            Toast.success('故事播放完毕 🎉');
+        }
+        updateProgress();
+    }, intervalMs);
+}
+
+function stopPlay() {
+    const btn = document.getElementById('btnPlay');
+    isPlaying = false;
+    btn.textContent = '▶️';
+    if (progressInterval) {
+        clearInterval(progressInterval);
+        progressInterval = null;
+    }
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    speechUtterance = null;
+}
+
+function seekAudio(event) {
+    if (!storyData) return;
+    const bar = document.getElementById('progressBar');
+    const rect = bar.getBoundingClientRect();
+    const ratio = (event.clientX - rect.left) / rect.width;
+    playbackProgress = Math.max(0, Math.min(100, ratio * 100));
+    updateProgress();
+}
+
+function updateProgress() {
+    document.getElementById('progressFilled').style.width = playbackProgress + '%';
+    const estSeconds = Math.max(1, Math.round(storyData.words / 4));
+    const current = Math.round(playbackProgress / 100 * estSeconds);
+    document.getElementById('currentTime').textContent = formatTime(current);
+}
+
+// --- Speed ---
+function changeSpeed(delta) {
+    currentSpeed = Math.max(0.5, Math.min(2.0, currentSpeed + delta));
+    document.getElementById('speedValue').textContent = currentSpeed.toFixed(1) + 'x';
+    Toast.info(`播放速度: ${currentSpeed.toFixed(1)}x`);
+}
+
+// --- Favorite ---
+function toggleFavorite() {
+    isFavorited = !isFavorited;
+    const btn = document.getElementById('btnFavorite');
+    btn.textContent = isFavorited ? '❤️' : '🤍';
+    btn.classList.toggle('active', isFavorited);
+    Toast.success(isFavorited ? '已添加到收藏 ✨' : '已取消收藏');
+
+    if (storyData) {
+        API.stories.toggleFavorite(storyData.id).catch((err) => {
+            isFavorited = !isFavorited;
+            btn.textContent = isFavorited ? '❤️' : '🤍';
+            btn.classList.toggle('active', isFavorited);
+            Toast.error('收藏操作失败: ' + (err.message || '请重试'));
+        });
+    }
+}
+
+// --- Download ---
+function downloadStory() {
+    if (!storyData) return;
+    const text = `【${storyData.title}】\n\n${storyData.content}\n\n—— © TinyLLM-Story`;
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${storyData.title}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    Toast.success('故事已下载 📥');
+}
+
+// --- Cleanup ---
+window.addEventListener('beforeunload', () => {
+    if (progressInterval) clearInterval(progressInterval);
+});
+
+// --- Init ---
+document.addEventListener('DOMContentLoaded', loadStory);
+</script>
+</body>
+</html>

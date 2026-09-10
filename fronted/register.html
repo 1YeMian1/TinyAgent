@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>注册 — TinyLLM-Story</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-header">
+            <div class="auth-logo">📖</div>
+            <h2>创建账号</h2>
+            <p>加入 TinyLLM-Story，开启故事之旅</p>
+        </div>
+
+        <form id="registerForm" onsubmit="handleRegister(event)" novalidate>
+            <div class="form-group" id="usernameGroup">
+                <label>用户名</label>
+                <div class="input-wrapper">
+                    <span class="input-icon">👤</span>
+                    <input type="text" id="username" placeholder="给自己起个好听的名字" required>
+                </div>
+                <span class="error-text" id="usernameError"></span>
+            </div>
+
+            <div class="form-group" id="emailGroup">
+                <label>邮箱地址</label>
+                <div class="input-wrapper">
+                    <span class="input-icon">📧</span>
+                    <input type="email" id="email" placeholder="请输入邮箱地址" required>
+                </div>
+                <span class="error-text" id="emailError"></span>
+            </div>
+
+            <div class="form-group" id="passwordGroup">
+                <label>密码</label>
+                <div class="input-wrapper">
+                    <span class="input-icon">🔒</span>
+                    <input type="password" id="password" placeholder="至少6位密码" required minlength="6">
+                </div>
+                <span class="error-text" id="passwordError"></span>
+            </div>
+
+            <div class="form-group" id="confirmGroup">
+                <label>确认密码</label>
+                <div class="input-wrapper">
+                    <span class="input-icon">🔒</span>
+                    <input type="password" id="confirmPassword" placeholder="再次输入密码" required>
+                </div>
+                <span class="error-text" id="confirmError"></span>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary" id="registerBtn">
+                    注册
+                </button>
+            </div>
+        </form>
+
+        <div class="form-divider">或者</div>
+
+        <div class="form-switch">
+            已有账号？<a href="login.html">立即登录</a>
+        </div>
+    </div>
+</div>
+
+<script src="js/common.js"></script>
+<script src="js/api.js"></script>
+<script>
+async function handleRegister(e) {
+    e.preventDefault();
+
+    const username = document.getElementById('username').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value.trim();
+    const confirmPassword = document.getElementById('confirmPassword').value.trim();
+    const btn = document.getElementById('registerBtn');
+
+    // Reset
+    document.querySelectorAll('.form-group').forEach(g => g.classList.remove('error'));
+    document.querySelectorAll('.error-text').forEach(e => e.textContent = '');
+
+    // Validate
+    let hasError = false;
+
+    if (!username) {
+        document.getElementById('usernameGroup').classList.add('error');
+        document.getElementById('usernameError').textContent = '请输入用户名';
+        hasError = true;
+    } else if (username.length < 2) {
+        document.getElementById('usernameGroup').classList.add('error');
+        document.getElementById('usernameError').textContent = '用户名至少2个字符';
+        hasError = true;
+    }
+
+    if (!email) {
+        document.getElementById('emailGroup').classList.add('error');
+        document.getElementById('emailError').textContent = '请输入邮箱地址';
+        hasError = true;
+    }
+
+    if (!password) {
+        document.getElementById('passwordGroup').classList.add('error');
+        document.getElementById('passwordError').textContent = '请输入密码';
+        hasError = true;
+    } else if (password.length < 6) {
+        document.getElementById('passwordGroup').classList.add('error');
+        document.getElementById('passwordError').textContent = '密码至少6位';
+        hasError = true;
+    }
+
+    if (password !== confirmPassword) {
+        document.getElementById('confirmGroup').classList.add('error');
+        document.getElementById('confirmError').textContent = '两次密码不一致';
+        hasError = true;
+    }
+
+    if (hasError) return;
+
+    // Submit
+    btn.disabled = true;
+    btn.textContent = '注册中...';
+
+    try {
+        const result = await API.auth.register(username, email, password);
+        Auth.login(result);
+        Toast.success('注册成功！欢迎加入 🎉');
+        setTimeout(() => {
+            window.location.href = 'index.html';
+        }, 800);
+    } catch (err) {
+        Toast.error(err.message || '注册失败，请重试');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '注册';
+    }
+}
+</script>
+</body>
+</html>
