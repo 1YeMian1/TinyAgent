@@ -58,9 +58,9 @@
             <div class="reading-toolbar" id="readingToolbar">
                 <div class="font-size-controls">
                     字号：
-                    <button class="font-btn" onclick="setFontSize('sm')">小</button>
-                    <button class="font-btn active" onclick="setFontSize('md')">中</button>
-                    <button class="font-btn" onclick="setFontSize('lg')">大</button>
+                                <button class="font-btn" data-size="sm" onclick="setFontSize('sm')">小</button>
+                                <button class="font-btn active" data-size="md" onclick="setFontSize('md')">中</button>
+                                <button class="font-btn" data-size="lg" onclick="setFontSize('lg')">大</button>
                 </div>
                 <div class="export-controls">
                     <button class="btn-outline" onclick="downloadStory('txt')">下载 .txt</button>
@@ -258,6 +258,22 @@ function getVoiceName(id) {
 // === Karaoke / Paragraph highlight support ===
 let paragraphOffsets = [];
 let boundaryFired = false;
+
+// --- Font size / reading controls ---
+function setFontSize(size) {
+    const content = document.querySelector('.story-content');
+    if (!content) return;
+    content.classList.remove('font-sm','font-md','font-lg');
+    if (size === 'sm') content.classList.add('font-sm');
+    else if (size === 'lg') content.classList.add('font-lg');
+    else content.classList.add('font-md');
+    // toggle active state on buttons
+    document.querySelectorAll('.font-btn').forEach(btn => {
+        const s = btn.getAttribute('data-size') || '';
+        btn.classList.toggle('active', s === size);
+    });
+}
+
 function prepareKaraoke() {
     const paras = Array.from(document.querySelectorAll('.story-paragraph'));
     paragraphOffsets = [];
