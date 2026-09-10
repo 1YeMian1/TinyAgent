@@ -416,46 +416,66 @@ if not CORS_ORIGINS:
 # ==============================
 
 
-# 定义故事分类
+# 定义故事分类详细信息列表（包含 emoji 标识、键名与展示标签）
 CATEGORIES = [
     {
         "key": "",
-        "label": "全部"
+        "label": "全部",
+        "emoji": "📚",
+        "description": "所有精选故事"
     },
     {
         "key": "动物故事",
-        "label": "🐱 动物故事"
+        "label": "🐱 动物故事",
+        "emoji": "🐱",
+        "description": "关于小猫、小熊与森林小动物的趣味故事"
     },
     {
         "key": "童话故事",
-        "label": "🏰 童话故事"
+        "label": "🏰 童话故事",
+        "emoji": "🏰",
+        "description": "充满奇幻城堡、精灵与魔法的神奇旅程"
     },
     {
         "key": "成长故事",
-        "label": "🌱 成长故事"
+        "label": "🌱 成长故事",
+        "emoji": "🌱",
+        "description": "学会勇敢、诚实、习惯养成与自我认知"
     },
     {
         "key": "冒险故事",
-        "label": "🗺️ 冒险故事"
+        "label": "🗺️ 冒险故事",
+        "emoji": "🗺️",
+        "description": "探索神秘世界、寻宝与勇气大考验"
     },
     {
         "key": "温馨故事",
-        "label": "🌙 温馨故事"
+        "label": "🌙 温馨故事",
+        "emoji": "🌙",
+        "description": "温暖心灵的睡前抚慰与晚安故事"
     },
     {
         "key": "友谊故事",
-        "label": "🤝 友谊故事"
+        "label": "🤝 友谊故事",
+        "emoji": "🤝",
+        "description": "学会分享、合作、关爱同伴与社交成长"
     },
     {
         "key": "想象故事",
-        "label": "✨ 想象故事"
+        "label": "✨ 想象故事",
+        "emoji": "✨",
+        "description": "天马行空的幻想、外太空与梦境漫游"
     }
 ]
+
+# 故事分类纯名称元组（供服务层校验与标准化使用）
+STORY_CATEGORY_NAMES = tuple(item["key"] for item in CATEGORIES if item["key"])
+
 
 
 # 根据分类生成emoji映射
 EMOJIS = {
-    item["key"]: item["label"].split(" ", 1)[0]
+    item["key"]: item.get("emoji", item["label"].split(" ", 1)[0])
     for item in CATEGORIES
     if item["key"]
 }

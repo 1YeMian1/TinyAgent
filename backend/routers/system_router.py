@@ -29,8 +29,17 @@ router = APIRouter(
 
 #定义GET请求接口，用于获取分类信息
 @router.get("/categories")
-def categories()->dict[str,Any]:
-    #返回系统配置中的分类列表
-    return {"categories": CATEGORIES}
+def categories() -> dict[str, Any]:
+    """
+    获取系统支持的故事分类列表及全局 Emoji 映射。
+    提供给前端分类 Tab 栏与创作选择框使用。
+    """
+    from backend.config import EMOJIS
+    return {
+        "categories": CATEGORIES,
+        "emojis": EMOJIS,
+        "total": len(CATEGORIES)
+    }
+
 
 

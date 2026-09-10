@@ -108,22 +108,59 @@ def stream_story(
     length: str = Query("medium", pattern="^(short|medium|long)$"),
     extra: str = ""
 ) -> StreamingResponse:
-    # 调用生成服务生成完整故事
-    content, _ = generate_content(
-        GenerateRequest(theme=theme, category=category, character=character, length=length, extra=extra)
-    )
+    """
+    通过 Server-Sent Events (SSE) 协议实时流式返回生成的故事文本。
+    包含空主题校验与异常状态事件兜底，避免前端解析挂死。
+    """
+    # 基础校验：主题不可为空
+    clean_theme = (theme or "").strip()
+    clean_category = normalize_category(category, clean_theme)
 
     # 定义事件生成器
     def events() -> Generator[str, None, None]:
-        # 按24字符切分内容
-        for chunk in (content[index:index + 24] for index in range(0, len(content), 24)):
-            # 返回SSE格式数据
-            yield f"data: {json.dumps({'text': chunk}, ensure_ascii=False)}\n\n"
-        # 返回结束事件
-        yield 'data: {"done": true}\n\n'
+        if not clean_theme:
+            # 返回错误事件并结束
+            err_data = json.dumps({"error": "故事主题不能为空", "done": True}, ensure_ascii=False)
+            yield f"data: {err_data}\n\n"
+            return
+
+        try:
+            # 调用生成服务生成故事
+            content, _ = generate_content(
+                GenerateRequest(
+                    theme=clean_theme,
+                    category=clean_category,
+                    character=character.strip() or "小主角",
+                    length=length,
+                    extra=extra.strip(),
+                )
+            )
+
+            # 按 20~24 字符切分 chunk，平滑流式推送
+            chunk_size = 20
+            for index in range(0, len(content), chunk_size):
+                chunk = content[index:index + chunk_size]
+                yield f"data: {json.dumps({'text': chunk, 'done': False}, ensure_ascii=False)}\n\n"
+
+            # 正常流结束事件
+            yield f"data: {json.dumps({'done': True, 'full_text': content, 'category': clean_category}, ensure_ascii=False)}\n\n"
+
+        except Exception as e:
+            # 异常兜底，通知前端
+            err_data = json.dumps({"error": f"创作过程出现异常: {str(e)}", "done": True}, ensure_ascii=False)
+            yield f"data: {err_data}\n\n"
 
     # 返回流式响应
-    return StreamingResponse(events(), media_type="text/event-stream")
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
 
 
 # 定义图片重新生成接口

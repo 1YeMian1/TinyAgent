@@ -194,7 +194,7 @@ uvicorn backend.main:app --reload --port 8000
 
 | 分类 | 请求方法 | 路径 | 功能说明 |
 |:---|:---|:---|:---|
-| **系统** | `GET` | `/api/v1/categories` | 获取系统故事分类列表 |
+| **系统** | `GET` | `/api/v1/categories` | 获取系统故事分类列表、全量 Emoji 与说明元数据 |
 | **认证** | `POST` | `/api/v1/auth/register` | 用户注册，返回 Token 与个人信息 |
 | **认证** | `POST` | `/api/v1/auth/login` | 用户登录并获取 JWT Token |
 | **认证** | `GET` | `/api/v1/auth/profile` | 获取当前用户信息及收藏/历史统计 |
