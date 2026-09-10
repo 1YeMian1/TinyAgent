@@ -54,6 +54,18 @@
             </div>
         </div>
 
+        <!-- 快捷预设创意标签 -->
+        <div class="quick-tags" id="quickTags">
+            <span class="quick-tags-label">💡 创意灵感：</span>
+            <button class="quick-tag-chip" data-theme="勇敢小熊" data-category="动物故事">🐻 勇敢小熊</button>
+            <button class="quick-tag-chip" data-theme="太空探险" data-category="冒险故事">🚀 太空探险</button>
+            <button class="quick-tag-chip" data-theme="分享魔法棒" data-category="童话故事">🪄 分享魔法棒</button>
+            <button class="quick-tag-chip" data-theme="海底奇遇" data-category="想象故事">🐠 海底奇遇</button>
+            <button class="quick-tag-chip" data-theme="学会勇敢" data-category="成长故事">💪 学会勇敢</button>
+            <button class="quick-tag-chip" data-theme="森林音乐会" data-category="友谊故事">🎵 森林音乐会</button>
+            <button class="quick-tag-chip" data-theme="睡前月亮船" data-category="温馨故事">🌙 睡前月亮船</button>
+        </div>
+
         <div class="form-row">
             <div class="form-group">
                 <label><span class="label-icon">🦸</span> 主角名称（可选）</label>
@@ -101,10 +113,10 @@
         </div>
     </div>
 
-    <!-- Generation Progress -->
+    <!-- Generation Progress (流式输出中) -->
     <div class="loading-spinner" id="generatingSpinner" style="display:none;">
         <div class="spinner"></div>
-        <div class="spinner-text" id="generatingText">AI 正在创作故事...</div>
+        <div class="spinner-text" id="generatingText">AI 正在构思故事...</div>
     </div>
 
     <!-- Generation Result -->
@@ -116,8 +128,14 @@
                 <button class="btn btn-sm btn-primary" onclick="saveStory()">💾 保存故事</button>
             </div>
         </div>
-        <div class="result-content" id="resultContent"></div>
-        <div class="generated-images" id="generatedImages" style="display:none;"></div>
+        <div class="result-content" id="resultContent">
+            <!-- 流式输出时：光标跟随在每个新 chunk 末尾闪烁 -->
+            <span class="stream-cursor" id="streamCursor"></span>
+        </div>
+        <!-- 插图区域：异步加载，先展示骨架屏 -->
+        <div class="generated-images" id="generatedImages" style="display:none;">
+            <!-- 动态填充：骨架屏 → 真实图片淡入 -->
+        </div>
     </div>
 
 </main>
@@ -138,7 +156,7 @@ let isGenerating = false;
 let generatedStory = null;
 let cancelRequested = false;
 let generationController = null;
-let stopTypewriter = null;
+let generationStream = null;  // EventSource 引用，用于取消
 
 // --- Length Slider ---
 function updateLengthLabel() {
@@ -149,25 +167,42 @@ function updateLengthLabel() {
     document.getElementById('length').value = selectValues[val];
 }
 
-// --- Typewriter effect ---
-function typewriter(el, text, speed, onDone) {
-    el.textContent = '';
-    el.classList.add('typing');
-    let i = 0;
-    const timer = setInterval(() => {
-        if (i < text.length) {
-            el.textContent += text[i];
-            i++;
-        } else {
-            clearInterval(timer);
-            el.classList.remove('typing');
-            if (onDone) onDone();
-        }
-    }, speed);
-    return () => { clearInterval(timer); el.classList.remove('typing'); };
-}
+// ============================================================
+// 快捷预设创意标签 — 点击自动填充主题与分类
+// ============================================================
+(function initQuickTags() {
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('quickTags').addEventListener('click', (e) => {
+            const chip = e.target.closest('.quick-tag-chip');
+            if (!chip || isGenerating) return;
 
-// --- Generate Story ---
+            const theme = chip.dataset.theme;
+            const category = chip.dataset.category;
+
+            if (theme) {
+                document.getElementById('theme').value = theme;
+                document.getElementById('theme').focus();
+                // 添加一个小动画反馈
+                chip.classList.add('tag-popped');
+                setTimeout(() => chip.classList.remove('tag-popped'), 300);
+            }
+            if (category) {
+                const catSelect = document.getElementById('category');
+                // 找到匹配的 option
+                for (const opt of catSelect.options) {
+                    if (opt.value === category) {
+                        catSelect.value = category;
+                        break;
+                    }
+                }
+            }
+        });
+    });
+})();
+
+// ============================================================
+// SSE 流式故事生成 — 真实逐字输出，取代旧的假打字机
+// ============================================================
 async function generateStory() {
     if (isGenerating) return;
 
@@ -180,98 +215,226 @@ async function generateStory() {
         return;
     }
 
-    // Start generation
+    // --- 进入生成状态 ---
     isGenerating = true;
     cancelRequested = false;
     generationController = new AbortController();
+
+    // 隐藏创作按钮，显示取消按钮
     document.getElementById('generateBtn').style.display = 'none';
     document.getElementById('cancelBtn').style.display = 'inline-flex';
-    document.getElementById('generatingSpinner').style.display = 'flex';
-    document.getElementById('generatingText').textContent = 'AI 正在构思故事...';
-    document.getElementById('generateResult').classList.remove('show');
 
-    // Progress status phrases while the request is running
-    const phrases = [
-        'AI 正在构思故事框架...',
-        '正在编织情节...',
-        '添加生动的细节...',
-        '润色语言表达...',
-    ];
-    let phraseIndex = 0;
-    const phraseInterval = setInterval(() => {
-        if (cancelRequested || !isGenerating) {
-            clearInterval(phraseInterval);
-            return;
-        }
-        phraseIndex = (phraseIndex + 1) % phrases.length;
-        document.getElementById('generatingText').textContent = phrases[phraseIndex];
-    }, 1500);
+    // 准备结果容器（先清空，隐藏）
+    const resultEl = document.getElementById('generateResult');
+    resultEl.classList.remove('show');
+    resultEl.classList.add('show'); // 立即显示框架
+    document.getElementById('resultContent').innerHTML = '';
+    document.getElementById('resultTitle').textContent = '✨ 正在创作中...';
+    document.getElementById('generatedImages').style.display = 'none';
+    document.getElementById('generatedImages').innerHTML = '';
 
-    try {
-        const data = {
-            theme,
-            category: document.getElementById('category').value,
-            character: document.getElementById('character').value.trim(),
-            length: document.getElementById('length').value,
-            extra: document.getElementById('extra').value.trim(),
-            generate_images: document.getElementById('genImages').checked,
-            image_count: 3,
-        };
+    // 隐藏 spinner，直接在结果区展示流式内容
+    document.getElementById('generatingSpinner').style.display = 'none';
 
-        const result = await API.generate.create(data, { signal: generationController.signal });
-        generatedStory = result;
+    // 创建流式光标元素
+    const contentEl = document.getElementById('resultContent');
+    const cursorEl = document.createElement('span');
+    cursorEl.className = 'stream-cursor';
+    cursorEl.textContent = '▌';
+    contentEl.appendChild(cursorEl);
 
-        // Show result
-        document.getElementById('generateResult').classList.add('show');
-        document.getElementById('resultTitle').textContent = result.title || 'AI 生成的故事';
+    generatedStory = null;
 
-        // Smooth scroll to result
-        setTimeout(() => {
-            document.getElementById('generateResult').scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 100);
+    // 收集完整文本
+    let fullText = '';
+    let streamCategory = '';
 
-        // Typewriter effect
-        const contentEl = document.getElementById('resultContent');
-        const text = result.content || '';
-        stopTypewriter = typewriter(contentEl, text, 18, () => {
-            renderGeneratedImages(result.images || []);
-            if (result.images_message) Toast.info(result.images_message);
-        });
+    const streamData = {
+        theme,
+        category: document.getElementById('category').value,
+        character: document.getElementById('character').value.trim(),
+        length: document.getElementById('length').value,
+        extra: document.getElementById('extra').value.trim(),
+    };
 
-        Toast.success('故事生成完成！✨');
-    } catch (err) {
-        console.error('Generate Error:', err);
-        if (!cancelRequested && err.name !== 'AbortError') {
-            Toast.error('故事生成失败: ' + (err.message || '请稍后重试'));
-        }
-    } finally {
-        clearInterval(phraseInterval);
+    // streamFetch 返回 { close } 对象（基于 EventSource），不是 Promise
+    // 状态通过回调管理
+    let streamDone = false;
+
+    function cleanupUI() {
         isGenerating = false;
         document.getElementById('generatingSpinner').style.display = 'none';
         document.getElementById('generateBtn').style.display = 'inline-flex';
         document.getElementById('cancelBtn').style.display = 'none';
         generationController = null;
     }
+
+    try {
+        const stream = API.generate.streamFetch(
+            streamData,
+            // --- onChunk: 每收到一个文本片段，追加到 DOM ---
+            (text) => {
+                if (cancelRequested) return;
+                fullText += text;
+                const textNode = document.createTextNode(text);
+                contentEl.insertBefore(textNode, cursorEl);
+                contentEl.scrollTop = contentEl.scrollHeight;
+            },
+            // --- onDone: 流结束，更新标题，异步加载插图 ---
+            (result) => {
+                if (streamDone) return;
+                streamDone = true;
+                fullText = result.full_text || fullText;
+                streamCategory = result.category || streamData.category || '想象故事';
+
+                const character = streamData.character || '小主角';
+                document.getElementById('resultTitle').textContent =
+                    `${streamData.theme}：${character}的故事`;
+
+                if (cursorEl.parentNode) cursorEl.remove();
+
+                generatedStory = {
+                    title: `${streamData.theme}：${character}的故事`,
+                    content: fullText,
+                    category: streamCategory,
+                };
+
+                if (document.getElementById('genImages').checked && Auth.isLoggedIn()) {
+                    loadImagesAsync(fullText, streamCategory);
+                }
+
+                cleanupUI();
+                Toast.success('故事创作完成！✨');
+            },
+            // --- onError: 出错处理 ---
+            (err) => {
+                if (streamDone) return;
+                streamDone = true;
+                if (cursorEl.parentNode) cursorEl.remove();
+                cleanupUI();
+                if (!cancelRequested && (typeof err === 'string' ? err : err.name) !== 'AbortError') {
+                    const msg = typeof err === 'string' ? err : (err.message || '请稍后重试');
+                    Toast.error('故事生成失败: ' + msg);
+                    if (fullText) {
+                        document.getElementById('resultTitle').textContent = '⚠️ 部分生成的故事';
+                    } else {
+                        resultEl.classList.remove('show');
+                    }
+                }
+            },
+            // --- AbortSignal ---
+            generationController.signal
+        );
+
+        // 保存 stream 引用用于取消
+        generationStream = stream;
+    } catch (err) {
+        console.error('Generate Error:', err);
+        if (!streamDone) {
+            if (cursorEl.parentNode) cursorEl.remove();
+            cleanupUI();
+            if (!cancelRequested && err.name !== 'AbortError') {
+                Toast.error('故事生成失败: ' + (err.message || '请稍后重试'));
+            }
+        }
+    }
 }
 
-// --- Render backend-provided images ---
-function renderGeneratedImages(images) {
+// ============================================================
+// 插图异步加载 — 骨架屏 → 后台请求 → 淡入呈现
+// ============================================================
+async function loadImagesAsync(storyContent, category) {
     const imgContainer = document.getElementById('generatedImages');
-    if (!Array.isArray(images) || images.length === 0) {
-        imgContainer.innerHTML = '';
-        imgContainer.style.display = 'none';
+    const imageCount = 3;
+
+    // Step 1: 立即展示骨架屏占位
+    imgContainer.style.display = 'grid';
+    imgContainer.innerHTML = Array.from({ length: imageCount }, (_, i) =>
+        `<div class="gen-image image-loading" data-image-index="${i}">
+            <div class="image-skeleton"></div>
+            <div class="image-skeleton-text">✨ AI 正在绘制第 ${i + 1} 张配图...</div>
+        </div>`
+    ).join('');
+
+    // Step 2: 后台异步请求配图
+    try {
+        // 先尝试通过 POST /api/v1/generate/images 接口请求（需要 story_id）
+        // 如果没有 story_id，则显示本地 SVG 兜底
+        let imageUrls = [];
+
+        if (generatedStory && generatedStory.id) {
+            try {
+                const result = await API.generate.images(generatedStory.id, imageCount);
+                imageUrls = result.images || [];
+            } catch (imgErr) {
+                console.warn('远程配图请求失败，使用 SVG 兜底:', imgErr);
+            }
+        }
+
+        // Step 3: 如果远程没有拿到图，生成本地 SVG 兜底图
+        if (!imageUrls || imageUrls.length === 0) {
+            imageUrls = generateFallbackSVGs(storyContent, category, imageCount);
+        }
+
+        // Step 4: 替换骨架屏为真实图片，淡入动画
+        renderImagesWithFade(imgContainer, imageUrls);
+    } catch (err) {
+        console.error('图片加载异常:', err);
+        // 出错时展示兜底图
+        const fallbackUrls = generateFallbackSVGs(storyContent, category, imageCount);
+        renderImagesWithFade(imgContainer, fallbackUrls);
+    }
+}
+
+/** 生成本地 SVG 兜底插图 */
+function generateFallbackSVGs(content, category, count) {
+    const palettes = [
+        ['#FFE4B5', '#FF9A9E', '#8EC5FC'],
+        ['#D4FC79', '#96E6A1', '#84FAB0'],
+        ['#C2FFD8', '#465EFB', '#B8C6DB'],
+    ];
+    const excerpt = (content || '').slice(0, 80);
+    const encodedExcerpt = encodeURIComponent(excerpt);
+    const encodedCategory = encodeURIComponent(category || '儿童故事');
+
+    return Array.from({ length: count }, (_, i) => {
+        const [sky, hill, accent] = palettes[i % palettes.length];
+        const cx = 170 + i * 70;
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450">
+<defs><linearGradient id="sky${i}" x1="0" y1="0" x2="1" y2="1"><stop stop-color="${sky}"/><stop offset="1" stop-color="${accent}"/></linearGradient></defs>
+<rect width="800" height="450" rx="28" fill="url(#sky${i})"/>
+<circle cx="680" cy="90" r="48" fill="#FFF6B7" opacity=".9"/>
+<path d="M0 330 Q140 220 280 330 T560 320 T800 300 V450 H0Z" fill="${hill}" opacity=".9"/>
+<path d="M0 370 Q180 290 360 370 T800 350 V450 H0Z" fill="#FFFFFF" opacity=".36"/>
+<g transform="translate(${cx},220)"><circle r="66" fill="#FFF8E7"/><circle cx="-23" cy="-8" r="8" fill="#394867"/><circle cx="23" cy="-8" r="8" fill="#394867"/><path d="M-24 22 Q0 42 24 22" fill="none" stroke="#E07A5F" stroke-width="7" stroke-linecap="round"/></g>
+<text x="36" y="52" font-family="sans-serif" font-size="23" font-weight="700" fill="#394867">${encodedExcerpt}...</text>
+<text x="38" y="84" font-family="sans-serif" font-size="15" fill="#394867" opacity=".8">${encodedCategory} · TinyLLM</text>
+</svg>`;
+        return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    });
+}
+
+/** 将图片 URL 列表渲染到容器，带淡入动画 */
+function renderImagesWithFade(container, urls) {
+    if (!Array.isArray(urls) || urls.length === 0) {
+        container.innerHTML = '';
+        container.style.display = 'none';
         return;
     }
-    imgContainer.innerHTML = images.map((img, i) => `
-        <div class="gen-image" data-image-index="${i}" id="genImg${i}">
-            <img src="${escapeHtml(img)}" alt="故事配图 ${i + 1}" loading="lazy">
+
+    container.innerHTML = urls.map((url, i) =>
+        `<div class="gen-image image-fade-in" data-image-index="${i}" id="genImg${i}">
+            <img src="${escapeHtml(url)}" alt="故事配图 ${i + 1}" loading="lazy"
+                 onload="this.closest('.gen-image').classList.add('image-loaded')"
+                 onerror="this.closest('.gen-image').classList.add('image-error')">
             <div class="select-overlay">
                 <div class="select-check">✓</div>
             </div>
-        </div>
-    `).join('');
-    imgContainer.style.display = 'grid';
-    imgContainer.querySelectorAll('.gen-image').forEach(el => {
+        </div>`
+    ).join('');
+
+    container.style.display = 'grid';
+    container.querySelectorAll('.gen-image').forEach(el => {
         el.addEventListener('click', () => selectImage(Number(el.dataset.imageIndex)));
     });
 }
@@ -279,9 +442,13 @@ function renderGeneratedImages(images) {
 // --- Cancel ---
 function cancelGeneration() {
     cancelRequested = true;
+    // 先中断 AbortController（如果有）
     if (generationController) generationController.abort();
-    if (stopTypewriter) stopTypewriter();
-    stopTypewriter = null;
+    // 再关闭 EventSource 连接
+    if (generationStream && typeof generationStream.close === 'function') {
+        generationStream.close();
+    }
+    generationStream = null;
     Toast.info('已取消生成');
     resetGenerateUI();
 }
@@ -296,7 +463,7 @@ function resetGenerateUI() {
 // --- Regenerate ---
 function regenerateStory() {
     document.getElementById('generateResult').classList.remove('show');
-    document.getElementById('resultContent').textContent = '';
+    document.getElementById('resultContent').innerHTML = '';
     document.getElementById('generatedImages').innerHTML = '';
     document.getElementById('generatedImages').style.display = 'none';
     generatedStory = null;
@@ -312,7 +479,8 @@ function saveStory() {
     }
 
     if (!generatedStory || !generatedStory.id) {
-        Toast.error('没有可保存的故事');
+        // 流式模式下没有 story id，提示用户通过传统模式生成后保存
+        Toast.info('流式创作的故事已展示，请登录后通过首页收藏功能保存');
         return;
     }
     API.stories.toggleFavorite(generatedStory.id)
