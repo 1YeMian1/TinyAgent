@@ -54,6 +54,20 @@
                 <span style="font-size:13px;color:var(--text-light);" id="storyDate"></span>
             </div>
             <h1 id="storyTitle"></h1>
+
+            <div class="reading-toolbar" id="readingToolbar">
+                <div class="font-size-controls">
+                    字号：
+                    <button class="font-btn" onclick="setFontSize('sm')">小</button>
+                    <button class="font-btn active" onclick="setFontSize('md')">中</button>
+                    <button class="font-btn" onclick="setFontSize('lg')">大</button>
+                </div>
+                <div class="export-controls">
+                    <button class="btn-outline" onclick="downloadStory('txt')">下载 .txt</button>
+                    <button class="btn-outline" onclick="downloadStory('md')">下载 .md</button>
+                    <button class="btn-outline" onclick="window.print()">打印</button>
+                </div>
+            </div>
         </div>
 
         <!-- Story Cover Image -->
@@ -199,6 +213,10 @@ function renderStory() {
     }
     renderVoices();
 
+    // Prepare karaoke (paragraph offsets) and set default font size
+    try { setFontSize('md'); } catch (e) {}
+    try { prepareKaraoke(); } catch (e) {}
+
     // Time estimate (avg 4 chars/sec reading speed)
     const estSeconds = Math.max(1, Math.round(storyData.words / 4));
     document.getElementById('totalTime').textContent = formatTime(estSeconds);
@@ -237,6 +255,36 @@ function getVoiceName(id) {
     return v ? v.name : '标准旁白';
 }
 
+// === Karaoke / Paragraph highlight support ===
+let paragraphOffsets = [];
+let boundaryFired = false;
+function prepareKaraoke() {
+    const paras = Array.from(document.querySelectorAll('.story-paragraph'));
+    paragraphOffsets = [];
+    let acc = 0;
+    paras.forEach(p => {
+        paragraphOffsets.push(acc);
+        // include a separating newline estimate
+        acc += (p.textContent || '').length + 1;
+    });
+}
+
+function highlightParagraphByCharIndex(charIndex) {
+    const paras = Array.from(document.querySelectorAll('.story-paragraph'));
+    if (paras.length === 0) return;
+    let idx = 0;
+    for (let i = 0; i < paragraphOffsets.length; i++) {
+        const start = paragraphOffsets[i];
+        const end = (i + 1 < paragraphOffsets.length) ? paragraphOffsets[i + 1] : Infinity;
+        if (charIndex >= start && charIndex < end) { idx = i; break; }
+    }
+    paras.forEach((p, i) => p.classList.toggle('reading-highlight', i === idx));
+}
+
+function clearParagraphHighlights() {
+    document.querySelectorAll('.story-paragraph').forEach(p => p.classList.remove('reading-highlight'));
+}
+
 // --- Playback ---
 function togglePlay() {
     if (isPlaying) {
@@ -251,6 +299,7 @@ function startPlay() {
     isPlaying = true;
     btn.textContent = '⏸️';
     playbackProgress = 0;
+    boundaryFired = false;
 
     Toast.info(`正在用 ${getVoiceName(currentVoice)} 的声音朗读...`);
 
@@ -265,6 +314,15 @@ function startPlay() {
             stopPlay();
             Toast.success('故事播放完毕 🎉');
         };
+        // onboundary provides charIndex in many browsers
+        speechUtterance.onboundary = (event) => {
+            try {
+                if (event && typeof event.charIndex === 'number') {
+                    boundaryFired = true;
+                    highlightParagraphByCharIndex(event.charIndex);
+                }
+            } catch (e) { /* ignore */ }
+        };
         window.speechSynthesis.cancel();
         window.speechSynthesis.speak(speechUtterance);
     }
@@ -277,6 +335,14 @@ function startPlay() {
             playbackProgress = 100;
             stopPlay();
             Toast.success('故事播放完毕 🎉');
+        }
+        // fallback: if boundary events are not firing, estimate character position and highlight paragraph
+        if (!boundaryFired) {
+            try {
+                const totalChars = storyData.content.length || 1;
+                const currentChar = Math.floor(playbackProgress / 100 * totalChars);
+                highlightParagraphByCharIndex(currentChar);
+            } catch (e) { /* ignore */ }
         }
         updateProgress();
     }, intervalMs);
@@ -292,6 +358,8 @@ function stopPlay() {
     }
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     speechUtterance = null;
+    boundaryFired = false;
+    clearParagraphHighlights();
 }
 
 function seekAudio(event) {
@@ -301,6 +369,12 @@ function seekAudio(event) {
     const ratio = (event.clientX - rect.left) / rect.width;
     playbackProgress = Math.max(0, Math.min(100, ratio * 100));
     updateProgress();
+    // update highlight according to new position
+    try {
+        const totalChars = storyData.content.length || 1;
+        const currentChar = Math.floor(playbackProgress / 100 * totalChars);
+        highlightParagraphByCharIndex(currentChar);
+    } catch (e) {}
 }
 
 function updateProgress() {
@@ -335,15 +409,20 @@ function toggleFavorite() {
     }
 }
 
-// --- Download ---
-function downloadStory() {
+// --- Download (supports txt or md) ---
+function downloadStory(type='txt') {
     if (!storyData) return;
-    const text = `【${storyData.title}】\n\n${storyData.content}\n\n—— © TinyLLM-Story`;
+    let text = '';
+    if (type === 'md') {
+        text = `# ${storyData.title}\n\n${storyData.content.replace(/\n{2,}/g,'\n\n')}\n\n*—— © TinyLLM-Story*`;
+    } else {
+        text = `【${storyData.title}】\n\n${storyData.content}\n\n—— © TinyLLM-Story`;
+    }
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${storyData.title}.txt`;
+    a.download = `${storyData.title}.${type}`;
     a.click();
     URL.revokeObjectURL(url);
     Toast.success('故事已下载 📥');

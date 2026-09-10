@@ -1817,3 +1817,20 @@ input, textarea, select { font-family: inherit; outline: none; }
     .page-section, .story-detail-page, .container { padding: 0; margin: 0; max-width: 100%; }
     .story-content p { page-break-inside: avoid; }
 }
+
+/* === T: Reading & Karaoke Styles === */
+.reading-toolbar{display:flex;justify-content:space-between;align-items:center;margin:12px 0 18px;gap:12px}
+.reading-toolbar .font-size-controls{display:flex;align-items:center;gap:8px}
+.font-size-controls .font-btn{margin-right:6px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-secondary)}
+.font-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.reading-toolbar .export-controls .btn-outline{padding:6px 10px;font-size:13px}
+.story-content.font-sm .story-paragraph{font-size:15px;line-height:1.6}
+.story-content.font-md .story-paragraph{font-size:18px;line-height:1.8}
+.story-content.font-lg .story-paragraph{font-size:22px;line-height:2}
+.story-paragraph{transition:background 0.25s ease, transform 0.15s;display:block;padding:6px 8px}
+.reading-highlight{background:linear-gradient(90deg,rgba(255,255,200,0.6),rgba(255,245,200,0.2));border-radius:6px;padding:6px 8px;transform:translateY(-1px)}
+@media print{
+  .navbar,.player-section,.story-actions,.reading-toolbar,.player-extra{display:none !important}
+  .story-content{color:#000;background:#fff}
+  img{max-width:100%;height:auto}
+}
