@@ -47,10 +47,29 @@
                 <div class="welcome-icon">🤖</div>
                 <h2>你好！我是故事小助手</h2>
                 <p>我可以基于平台故事库回答问题、帮你创作新故事，还能统计字数、查找故事。</p>
-                <div class="welcome-chips">
-                    <button class="example-chip" onclick="sendExample('小熊勇敢的故事讲了什么？')">🐻 小熊勇敢的故事讲了什么？</button>
-                    <button class="example-chip" onclick="sendExample('帮我写一个关于分享的小狐狸故事')">🦊 帮我写一个关于分享的小狐狸故事</button>
-                    <button class="example-chip" onclick="sendExample('故事库里有没有关于友谊的故事？')">🤝 故事库里有没有关于友谊的故事？</button>
+                
+                <div class="welcome-categories">
+                    <div>
+                        <div class="welcome-group-title">🔍 故事检索与情节问答</div>
+                        <div class="welcome-group-chips">
+                            <button class="example-chip" onclick="sendExample('小熊勇敢的故事讲了什么？')">🐻 小熊勇敢的故事讲了什么？</button>
+                            <button class="example-chip" onclick="sendExample('故事库里有没有关于友谊的故事？')">🤝 故事库里有没有关于友谊的故事？</button>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="welcome-group-title">✨ 灵感与故事创作</div>
+                        <div class="welcome-group-chips">
+                            <button class="example-chip" onclick="sendExample('帮我写一个关于分享的小狐狸故事')">🦊 帮我写一个关于分享的小狐狸故事</button>
+                            <button class="example-chip" onclick="sendExample('创作一个去月球探索的科幻童话')">🚀 创作一个去月球探索的科幻童话</button>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="welcome-group-title">📏 统计与知识查询</div>
+                        <div class="welcome-group-chips">
+                            <button class="example-chip" onclick="sendExample('查一下故事库里所有的冒险故事')">🗺️ 查一下故事库里所有的冒险故事</button>
+                            <button class="example-chip" onclick="sendExample('统计一下 ID 为 1 的故事有多少字？')">📖 统计一下 ID 为 1 的故事字数</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -62,6 +81,31 @@
         </div>
     </section>
 </main>
+
+<!-- 故事快速预览浮层 (Modal) -->
+<div class="story-preview-modal" id="storyPreviewModal" onclick="closeStoryPreview(event)">
+    <div class="story-preview-dialog" onclick="event.stopPropagation()">
+        <div class="story-preview-header">
+            <div class="story-preview-title">
+                <span id="previewEmoji">📖</span>
+                <span id="previewTitle">故事预览</span>
+            </div>
+            <button class="story-preview-close" onclick="closeStoryPreview()">&times;</button>
+        </div>
+        <div class="story-preview-body">
+            <div class="story-preview-meta">
+                <span id="previewCategory">分类</span>
+                <span id="previewWords">字数</span>
+            </div>
+            <div id="previewSummary" style="color:var(--text-secondary);font-style:italic;margin-bottom:12px;"></div>
+            <div id="previewContent">加载中...</div>
+        </div>
+        <div class="story-preview-footer">
+            <button class="btn btn-sm btn-outline" onclick="closeStoryPreview()">关闭</button>
+            <a id="previewDetailLink" href="#" class="btn btn-sm btn-primary" target="_blank">📖 前往故事详情页</a>
+        </div>
+    </div>
+</div>
 
 <footer class="footer">
     <div class="container">
@@ -79,12 +123,38 @@ let currentSessionId = null;
 let isSending = false;
 
 const EXAMPLE_TOOL_LABELS = {
-    retrieve_story_knowledge: '🔍 检索故事知识库',
-    search_stories: '🔎 搜索故事库',
-    get_story: '📖 读取故事正文',
-    count_story_words: '📏 统计故事字数',
-    create_story: '✨ 创作新故事',
+    retrieve_story_knowledge: {
+        label: '在故事百宝箱中寻找线索',
+        icon: '🔍',
+        badge: '知识检索',
+        hint: '检索故事知识库'
+    },
+    search_stories: {
+        label: '翻阅书架寻找相关故事',
+        icon: '🔎',
+        badge: '书库搜索',
+        hint: '搜索故事库'
+    },
+    get_story: {
+        label: '认真阅读故事正文细节',
+        icon: '📖',
+        badge: '读取全文',
+        hint: '阅读故事详细内容'
+    },
+    count_story_words: {
+        label: '拿起小尺子统计故事字数',
+        icon: '📏',
+        badge: '字数统计',
+        hint: '统计字数'
+    },
+    create_story: {
+        label: '挥动魔法棒构思精彩故事',
+        icon: '✨',
+        badge: '奇妙创作',
+        hint: 'AI 创作新故事'
+    },
 };
+
 
 // --- 会话列表 ---
 async function loadSessions(selectId = null) {
@@ -170,13 +240,32 @@ function resetChatToWelcome() {
             <div class="welcome-icon">🤖</div>
             <h2>你好！我是故事小助手</h2>
             <p>我可以基于平台故事库回答问题、帮你创作新故事，还能统计字数、查找故事。</p>
-            <div class="welcome-chips">
-                <button class="example-chip" onclick="sendExample('小熊勇敢的故事讲了什么？')">🐻 小熊勇敢的故事讲了什么？</button>
-                <button class="example-chip" onclick="sendExample('帮我写一个关于分享的小狐狸故事')">🦊 帮我写一个关于分享的小狐狸故事</button>
-                <button class="example-chip" onclick="sendExample('故事库里有没有关于友谊的故事？')">🤝 故事库里有没有关于友谊的故事？</button>
+            <div class="welcome-categories">
+                <div>
+                    <div class="welcome-group-title">🔍 故事检索与情节问答</div>
+                    <div class="welcome-group-chips">
+                        <button class="example-chip" onclick="sendExample('小熊勇敢的故事讲了什么？')">🐻 小熊勇敢的故事讲了什么？</button>
+                        <button class="example-chip" onclick="sendExample('故事库里有没有关于友谊的故事？')">🤝 故事库里有没有关于友谊的故事？</button>
+                    </div>
+                </div>
+                <div>
+                    <div class="welcome-group-title">✨ 灵感与故事创作</div>
+                    <div class="welcome-group-chips">
+                        <button class="example-chip" onclick="sendExample('帮我写一个关于分享的小狐狸故事')">🦊 帮我写一个关于分享的小狐狸故事</button>
+                        <button class="example-chip" onclick="sendExample('创作一个去月球探索的科幻童话')">🚀 创作一个去月球探索的科幻童话</button>
+                    </div>
+                </div>
+                <div>
+                    <div class="welcome-group-title">📏 统计与知识查询</div>
+                    <div class="welcome-group-chips">
+                        <button class="example-chip" onclick="sendExample('查一下故事库里所有的冒险故事')">🗺️ 查一下故事库里所有的冒险故事</button>
+                        <button class="example-chip" onclick="sendExample('统计一下 ID 为 1 的故事有多少字？')">📖 统计一下 ID 为 1 的故事字数</button>
+                    </div>
+                </div>
             </div>
         </div>`;
 }
+
 
 // --- 发消息 ---
 function sendExample(text) {
@@ -267,28 +356,64 @@ function appendAssistantBubble(data) {
     const steps = Array.isArray(data.tool_steps) ? data.tool_steps : [];
     const refs = Array.isArray(data.references) ? data.references : [];
 
+    // 童趣拟人化工具徽章与可折叠抽屉
     let stepsHtml = '';
     if (steps.length) {
         stepsHtml = `
-        <details class="tool-steps">
-            <summary>🔧 工具调用步骤（${steps.length}）</summary>
-            <ol class="step-list">
-                ${steps.map((s, i) => `
-                    <li>
-                        <div class="step-name">${i + 1}. ${EXAMPLE_TOOL_LABELS[s.tool] || s.tool}</div>
-                        <div class="step-args">参数：${escapeHtml(JSON.stringify(s.args || {}))}</div>
-                        ${s.result ? `<div class="step-result">结果：${escapeHtml(String(s.result).slice(0, 150))}${String(s.result).length > 150 ? '…' : ''}</div>` : ''}
-                    </li>`).join('')}
-            </ol>
-        </details>`;
+        <div class="assistant-tool-badges">
+            ${steps.map((s, i) => {
+                const toolInfo = EXAMPLE_TOOL_LABELS[s.tool] || {
+                    label: s.tool,
+                    icon: '⚙️',
+                    badge: '辅助工具',
+                    hint: s.tool
+                };
+                return `
+                <div class="tool-badge-item" id="tool-badge-${Date.now()}-${i}">
+                    <div class="tool-badge-header" onclick="toggleToolDrawer(this)">
+                        <div class="tool-badge-title">
+                            <span class="tool-badge-icon">${toolInfo.icon}</span>
+                            <span>${toolInfo.label}</span>
+                        </div>
+                        <span class="tool-badge-toggle">查看过程 ▾</span>
+                    </div>
+                    <div class="tool-drawer-content">
+                        <div class="tool-drawer-section">
+                            <div class="tool-drawer-label">🔧 调用工具：${escapeHtml(s.tool)}</div>
+                        </div>
+                        <div class="tool-drawer-section">
+                            <div class="tool-drawer-label">📥 输入参数：</div>
+                            <div class="tool-drawer-box">${escapeHtml(JSON.stringify(s.args || {}, null, 2))}</div>
+                        </div>
+                        ${s.result ? `
+                        <div class="tool-drawer-section">
+                            <div class="tool-drawer-label">📤 执行结果：</div>
+                            <div class="tool-drawer-box">${escapeHtml(String(s.result))}</div>
+                        </div>` : ''}
+                    </div>
+                </div>`;
+            }).join('')}
+        </div>`;
     }
 
+    // 引用来源卡片（支持点击快速预览与跳转）
     let refsHtml = '';
     if (refs.length) {
         refsHtml = `
-        <div class="ref-list">
-            <span class="ref-label">📚 引用来源：</span>
-            ${refs.map(r => `<a class="ref-chip" href="story-detail.html?id=${r.story_id}" target="_blank">《${escapeHtml(r.title || ('故事 ' + r.story_id))}》</a>`).join('')}
+        <div class="ref-list-fun">
+            <div class="ref-list-title">
+                <span>📚</span>
+                <span>故事小助手参考了以下故事：</span>
+            </div>
+            <div class="ref-cards-grid">
+                ${refs.map(r => `
+                    <button type="button" class="ref-card-btn" onclick="openStoryPreview(${r.story_id})">
+                        <span>📖</span>
+                        <span>《${escapeHtml(r.title || ('故事 ' + r.story_id))}》</span>
+                        <span style="font-size:10px;opacity:0.7;">🔍 点击预览</span>
+                    </button>
+                `).join('')}
+            </div>
         </div>`;
     }
 
@@ -299,6 +424,65 @@ function appendAssistantBubble(data) {
         ${refsHtml}`;
     el.querySelector('.bubble-content').textContent = data.answer || '';
     box.appendChild(el);
+}
+
+
+// 抽屉展开折叠
+function toggleToolDrawer(headerEl) {
+    const parent = headerEl.closest('.tool-badge-item');
+    if (!parent) return;
+    parent.classList.toggle('open');
+    const toggleLabel = parent.querySelector('.tool-badge-toggle');
+    if (toggleLabel) {
+        toggleLabel.textContent = parent.classList.contains('open') ? '收起详情 ▴' : '查看过程 ▾';
+    }
+}
+
+// 故事快速预览浮层逻辑
+async function openStoryPreview(storyId) {
+    const modal = document.getElementById('storyPreviewModal');
+    if (!modal) return;
+
+    // 重置内容
+    document.getElementById('previewTitle').textContent = '正在加载故事...';
+    document.getElementById('previewEmoji').textContent = '📖';
+    document.getElementById('previewCategory').textContent = '加载中';
+    document.getElementById('previewWords').textContent = '';
+    document.getElementById('previewSummary').textContent = '';
+    document.getElementById('previewContent').innerHTML = '<div class="typing-dots" style="justify-content:center;padding:20px;"><span></span><span></span><span></span></div>';
+    document.getElementById('previewDetailLink').href = `story-detail.html?id=${storyId}`;
+
+    modal.classList.add('show');
+
+    try {
+        const story = await API.stories.get(storyId);
+        document.getElementById('previewTitle').textContent = story.title || '故事详情';
+        document.getElementById('previewEmoji').textContent = story.emoji || '📖';
+        document.getElementById('previewCategory').textContent = `🏷️ ${story.category || '精选故事'}`;
+        document.getElementById('previewWords').textContent = `📝 ${story.words || story.content?.length || 0} 字`;
+        document.getElementById('previewSummary').textContent = story.summary ? `“${story.summary}”` : '';
+        
+        const previewText = story.content || '暂无内容';
+        const displayLimit = 400;
+        const shortText = previewText.length > displayLimit
+            ? previewText.slice(0, displayLimit) + '......'
+            : previewText;
+
+        document.getElementById('previewContent').innerHTML = shortText
+            .split('\n')
+            .filter(p => p.trim())
+            .map(p => `<p style="margin-bottom:8px;">${escapeHtml(p.trim())}</p>`)
+            .join('');
+    } catch (err) {
+        document.getElementById('previewTitle').textContent = '加载失败';
+        document.getElementById('previewContent').textContent = '无法获取故事内容: ' + (err.message || '网络异常');
+    }
+}
+
+function closeStoryPreview(event) {
+    if (event && event.target && event.target !== event.currentTarget) return;
+    const modal = document.getElementById('storyPreviewModal');
+    if (modal) modal.classList.remove('show');
 }
 
 function scrollToBottom() {
