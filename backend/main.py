@@ -33,9 +33,9 @@ async def lifespan(_: FastAPI)-> AsyncGenerator[None,None]:
 #创建FastAPI应用实例
 app = FastAPI(
     #设置接口文档显示的项目名称
-    tilte = "TinyLLM-Story API",
+    title="TinyLLM-Story API",
     #设置当前API服务版本
-    version = "v1.0.0",
+    version="v1.0.0",
     #注册应用生命周期管理函数
     lifespan=lifespan
 )
@@ -69,12 +69,17 @@ app.include_router(generate.router)
 if STATIC_DIR.exists():
     #挂载静态资源文件服务
     app.mount(
-        #设置惊天资源访问的根路径
+        #设置静态资源访问的根路径
         "/",
         #指定静态文件目录并支持HTML页面访问
         StaticFiles(directory=STATIC_DIR,html=True),
         #设置静态资源服务名称
         name="fronted"
     )
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("backend.main:app", host="127.0.0.1", port=8000, reload=True)
+
 
 
