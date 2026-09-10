@@ -4,10 +4,12 @@
 # 启用未来版本类型注解兼容
 from __future__ import annotations
 
+# 导入异步模块（SSE 流式逐字延迟）
+import asyncio
 # 导入JSON处理模块
 import json
 # 导入类型定义工具
-from typing import Any, Generator
+from typing import Any, AsyncGenerator
 
 # 导入FastAPI路由、依赖注入、请求参数工具
 from fastapi import APIRouter, Depends, Query, Request
@@ -19,7 +21,7 @@ from sqlalchemy.orm import Session
 # 导入用户认证相关方法
 from backend.auth_util import current_user, optional_user
 # 导入配置变量
-from backend.config import EMOJIS, MODEL_PATH
+from backend.config import CATEGORIES, EMOJIS, MODEL_PATH
 # 导入数据库获取方法
 from backend.database import get_db
 # 导入数据库模型
@@ -116,46 +118,50 @@ def stream_story(
     clean_theme = (theme or "").strip()
     clean_category = normalize_category(category, clean_theme)
 
-    # 定义事件生成器
-    def events() -> Generator[str, None, None]:
+    # 定义异步事件生成器（线程池生成 + 逐块异步推送 = 真正流式出字）
+    async def events() -> AsyncGenerator[str, None]:
         if not clean_theme:
-            # 返回错误事件并结束
             err_data = json.dumps({"error": "故事主题不能为空", "done": True}, ensure_ascii=False)
             yield f"data: {err_data}\n\n"
             return
 
         try:
-            # 调用生成服务生成故事
-            content, _ = generate_content(
-                GenerateRequest(
-                    theme=clean_theme,
-                    category=clean_category,
-                    character=character.strip() or "小主角",
-                    length=length,
-                    extra=extra.strip(),
-                )
-            )
+            # 立即发送 ready 事件 + 分类列表，让前端先渲染框架
+            yield f"data: {json.dumps({'ready': True, 'category': clean_category, 'categories': CATEGORIES}, ensure_ascii=False)}\n\n"
+            # 让浏览器先收到这一帧
+            await asyncio.sleep(0.03)
 
-            # 按 20~24 字符切分 chunk，平滑流式推送
+            # 将同步阻塞的 generate_content 放入线程池，不阻塞事件循环
+            payload = GenerateRequest(
+                theme=clean_theme,
+                category=clean_category,
+                character=character.strip() or "小主角",
+                length=length,
+                extra=extra.strip(),
+            )
+            content, _ = await asyncio.to_thread(generate_content, payload)
+
+            # 按 20 字符切分 chunk，每个 chunk 间隔 80ms 实现流式逐字效果
             chunk_size = 20
             for index in range(0, len(content), chunk_size):
                 chunk = content[index:index + chunk_size]
                 yield f"data: {json.dumps({'text': chunk, 'done': False}, ensure_ascii=False)}\n\n"
+                # 释放事件循环让中间件把数据推送到客户端
+                await asyncio.sleep(0.08)
 
-            # 正常流结束事件
+            # 正常流结束
             yield f"data: {json.dumps({'done': True, 'full_text': content, 'category': clean_category}, ensure_ascii=False)}\n\n"
 
         except Exception as e:
-            # 异常兜底，通知前端
             err_data = json.dumps({"error": f"创作过程出现异常: {str(e)}", "done": True}, ensure_ascii=False)
             yield f"data: {err_data}\n\n"
 
-    # 返回流式响应
+    # 返回流式响应（不用 x-accel-buffering 头避免代理缓冲）
     return StreamingResponse(
         events(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         }

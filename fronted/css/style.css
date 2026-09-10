@@ -1818,21 +1818,156 @@ input, textarea, select { font-family: inherit; outline: none; }
     .story-content p { page-break-inside: avoid; }
 }
 
-/* === T: Reading & Karaoke Styles === */
-.reading-toolbar{display:flex;justify-content:space-between;align-items:center;margin:12px 0 18px;gap:12px}
-.reading-toolbar .font-size-controls{display:flex;align-items:center;gap:8px}
-.font-size-controls .font-btn{margin-right:6px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-secondary)}
-.font-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
-.reading-toolbar .export-controls .btn-outline{padding:6px 10px;font-size:13px}
-.story-content.font-sm .story-paragraph{font-size:15px;line-height:1.6}
-.story-content.font-md .story-paragraph{font-size:18px;line-height:1.8}
-.story-content.font-lg .story-paragraph{font-size:22px;line-height:2}
-.story-paragraph{transition:background 0.25s ease, transform 0.15s;display:block;padding:6px 8px}
-.reading-highlight{background:linear-gradient(90deg,rgba(255,255,200,0.6),rgba(255,245,200,0.2));border-radius:6px;padding:6px 8px;transform:translateY(-1px)}
-.story-sentence{display:inline-block;padding:2px 4px;margin-right:4px;border-radius:4px;transition:background 0.18s,transform 0.12s}
-.story-sentence.reading-highlight{background:linear-gradient(90deg,rgba(255,245,200,0.9),rgba(255,235,190,0.6));box-shadow:0 6px 18px rgba(255,200,100,0.08);transform:translateY(-2px)}
-@media print{
-  .navbar,.player-section,.story-actions,.reading-toolbar,.player-extra{display:none !important}
-  .story-content{color:#000;background:#fff}
-  img{max-width:100%;height:auto}
+/* ============================================================
+   === C: 流式生成状态样式、创意标签 Chips 与骨架屏动画 ===
+   ============================================================ */
+
+/* --- 流式光标闪烁 --- */
+.stream-cursor {
+    display: inline;
+    color: var(--primary);
+    font-weight: 400;
+    animation: cursorBlink 0.8s step-end infinite;
+}
+
+@keyframes cursorBlink {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0; }
+}
+
+/* 生成结果容器流式体验优化 */
+.generate-result .result-content {
+    position: relative;
+    min-height: 120px;
+}
+
+/* 流式输出时正文区域光标对齐 */
+.generate-result .result-content .stream-cursor {
+    font-size: 18px;
+    vertical-align: baseline;
+}
+
+/* --- 快捷预设创意标签 Chips --- */
+.quick-tags {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+    padding: 12px 16px;
+    background: var(--bg-warm);
+    border-radius: var(--radius-sm);
+    border: 1px dashed var(--border);
+}
+
+.quick-tags-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    margin-right: 4px;
+}
+
+.quick-tag-chip {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    background: var(--bg-card);
+    border: 1.5px solid var(--border);
+    color: var(--text);
+    transition: var(--transition);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.quick-tag-chip:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: rgba(255, 107, 107, 0.06);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(255, 107, 107, 0.12);
+}
+
+.quick-tag-chip:active {
+    transform: scale(0.95);
+}
+
+.quick-tag-chip.tag-popped {
+    animation: tagPop 0.3s ease;
+}
+
+@keyframes tagPop {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.12); background: var(--primary); color: #fff; border-color: var(--primary); }
+    100% { transform: scale(1); }
+}
+
+/* --- 插图异步加载骨架屏 --- */
+.generated-images .gen-image.image-loading {
+    position: relative;
+    overflow: hidden;
+}
+
+.image-skeleton {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: 1;
+    background: linear-gradient(
+        90deg,
+        var(--border) 25%,
+        var(--bg) 50%,
+        var(--border) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: var(--radius);
+}
+
+.image-skeleton-text {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.85);
+    border-radius: 10px;
+    padding: 4px 10px;
+}
+
+/* 图片淡入动画 */
+.gen-image.image-fade-in {
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.gen-image.image-fade-in.image-loaded {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* 图片加载失败状态 */
+.gen-image.image-fade-in.image-error {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.gen-image.image-fade-in.image-error img {
+    filter: grayscale(0.5);
+    opacity: 0.6;
+}
+
+.gen-image.image-fade-in.image-error::after {
+    content: '⚠️ 图片加载失败';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: var(--text-secondary);
+    background: var(--bg);
 }
