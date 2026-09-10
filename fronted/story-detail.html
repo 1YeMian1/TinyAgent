@@ -270,6 +270,7 @@ function getVoiceName(id) {
 let sentenceOffsets = []; // cumulative char offsets for each sentence (flat list)
 let sentenceElements = []; // corresponding DOM elements for each sentence span
 let boundaryFired = false;
+let lastHighlightedIndex = -1;
 
 // --- Font size / reading controls ---
 function setFontSize(size) {
@@ -287,46 +288,71 @@ function setFontSize(size) {
 }
 
 function prepareKaraoke() {
-    // build flat sentence list and offsets
+    // Build sentenceOffsets by locating each sentence text within the original utterance (storyData.content)
     sentenceOffsets = [];
     sentenceElements = [];
-    let acc = 0;
+    let searchPos = 0;
+    const utteranceText = (storyData && typeof storyData.content === 'string') ? storyData.content : '';
+
     const paras = Array.from(document.querySelectorAll('.story-paragraph'));
     paras.forEach(p => {
         const sents = Array.from(p.querySelectorAll('.story-sentence'));
         if (sents.length === 0) {
             const text = (p.textContent || '').trim();
-            if (text) {
-                sentenceOffsets.push(acc);
-                sentenceElements.push(p);
-                acc += text.length + 1;
-            }
+            if (!text) return;
+            const found = utteranceText.indexOf(text, searchPos);
+            const start = found >= 0 ? found : searchPos;
+            sentenceOffsets.push(start);
+            sentenceElements.push(p);
+            searchPos = start + text.length;
         } else {
             sents.forEach(s => {
                 const text = (s.textContent || '').trim();
-                sentenceOffsets.push(acc);
+                if (!text) return;
+                const found = utteranceText.indexOf(text, searchPos);
+                const start = found >= 0 ? found : searchPos;
+                sentenceOffsets.push(start);
                 sentenceElements.push(s);
-                acc += text.length + 1;
+                searchPos = start + text.length;
             });
         }
     });
+    // last element end not needed; search positions are sufficient for comparisons
+    lastHighlightedIndex = -1;
 }
 
 function highlightSentenceByCharIndex(charIndex) {
     if (!sentenceOffsets || sentenceOffsets.length === 0) return;
-    let idx = 0;
+    // find highest index where sentenceOffsets[i] <= charIndex
+    let idx = -1;
     for (let i = 0; i < sentenceOffsets.length; i++) {
-        const start = sentenceOffsets[i];
-        const end = (i + 1 < sentenceOffsets.length) ? sentenceOffsets[i + 1] : Infinity;
-        if (charIndex >= start && charIndex < end) { idx = i; break; }
+        if (charIndex >= sentenceOffsets[i]) idx = i;
+        else break;
     }
+    if (idx === -1) idx = 0;
+    if (idx === lastHighlightedIndex) return; // no change
+    lastHighlightedIndex = idx;
+
     sentenceElements.forEach((el, i) => {
-        try { el.classList.toggle('reading-highlight', i === idx); } catch (e) {}
+        try {
+            const isActive = i === idx;
+            el.classList.toggle('reading-highlight', isActive);
+            if (isActive) {
+                // smooth scroll only when the highlighted sentence is out of view
+                try {
+                    const rect = el.getBoundingClientRect();
+                    if (rect.top < 80 || rect.bottom > (window.innerHeight || document.documentElement.clientHeight) - 80) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                } catch (e) {}
+            }
+        } catch (e) {}
     });
 }
 
 function clearSentenceHighlights() {
-    document.querySelectorAll('.story-sentence').forEach(s => s.classList.remove('reading-highlight'));
+    lastHighlightedIndex = -1;
+    sentenceElements.forEach(el => { try { el.classList.remove('reading-highlight'); } catch (e) {} });
 }
 
 // --- Playback ---
