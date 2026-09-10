@@ -1829,6 +1829,8 @@ input, textarea, select { font-family: inherit; outline: none; }
 .story-content.font-lg .story-paragraph{font-size:22px;line-height:2}
 .story-paragraph{transition:background 0.25s ease, transform 0.15s;display:block;padding:6px 8px}
 .reading-highlight{background:linear-gradient(90deg,rgba(255,255,200,0.6),rgba(255,245,200,0.2));border-radius:6px;padding:6px 8px;transform:translateY(-1px)}
+.story-sentence{display:inline-block;padding:2px 4px;margin-right:4px;border-radius:4px;transition:background 0.18s,transform 0.12s}
+.story-sentence.reading-highlight{background:linear-gradient(90deg,rgba(255,245,200,0.9),rgba(255,235,190,0.6));box-shadow:0 6px 18px rgba(255,200,100,0.08);transform:translateY(-2px)}
 @media print{
   .navbar,.player-section,.story-actions,.reading-toolbar,.player-extra{display:none !important}
   .story-content{color:#000;background:#fff}

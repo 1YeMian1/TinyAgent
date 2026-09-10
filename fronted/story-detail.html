@@ -191,11 +191,22 @@ function renderStory() {
     };
     document.getElementById('storyEmoji').textContent = emojiMap[storyData.category] || '📖';
 
-    // Story text with paragraphs
+    // Story text with paragraphs and sentence spans
     const paragraphs = storyData.content.split('\n').filter(p => p.trim());
-    document.getElementById('storyText').innerHTML = paragraphs
-        .map(p => `<p class="story-paragraph">${escapeHtml(p.trim())}</p>`)
-        .join('');
+    // simple sentence splitter for Chinese and English punctuation
+    const sentenceSplitRE = /([^。！？；\.!?]+[。！？；\.!?]?)/g;
+    document.getElementById('storyText').innerHTML = paragraphs.map(p => {
+        const pieces = [];
+        const trimmed = p.trim();
+        const matches = Array.from(trimmed.matchAll(sentenceSplitRE)).map(m => m[0]).filter(Boolean);
+        if (matches.length === 0) {
+            // fallback to whole paragraph as one sentence
+            pieces.push(`<span class="story-sentence">${escapeHtml(trimmed)}</span>`);
+        } else {
+            matches.forEach(s => pieces.push(`<span class="story-sentence">${escapeHtml(s.trim())}</span>`));
+        }
+        return `<p class="story-paragraph">${pieces.join('')}</p>`;
+    }).join('');
 
     // Images
     if (storyData.images && storyData.images.length > 0) {
@@ -255,8 +266,9 @@ function getVoiceName(id) {
     return v ? v.name : '标准旁白';
 }
 
-// === Karaoke / Paragraph highlight support ===
-let paragraphOffsets = [];
+// === Karaoke / Sentence-level highlight support ===
+let sentenceOffsets = []; // cumulative char offsets for each sentence (flat list)
+let sentenceElements = []; // corresponding DOM elements for each sentence span
 let boundaryFired = false;
 
 // --- Font size / reading controls ---
@@ -275,30 +287,46 @@ function setFontSize(size) {
 }
 
 function prepareKaraoke() {
-    const paras = Array.from(document.querySelectorAll('.story-paragraph'));
-    paragraphOffsets = [];
+    // build flat sentence list and offsets
+    sentenceOffsets = [];
+    sentenceElements = [];
     let acc = 0;
+    const paras = Array.from(document.querySelectorAll('.story-paragraph'));
     paras.forEach(p => {
-        paragraphOffsets.push(acc);
-        // include a separating newline estimate
-        acc += (p.textContent || '').length + 1;
+        const sents = Array.from(p.querySelectorAll('.story-sentence'));
+        if (sents.length === 0) {
+            const text = (p.textContent || '').trim();
+            if (text) {
+                sentenceOffsets.push(acc);
+                sentenceElements.push(p);
+                acc += text.length + 1;
+            }
+        } else {
+            sents.forEach(s => {
+                const text = (s.textContent || '').trim();
+                sentenceOffsets.push(acc);
+                sentenceElements.push(s);
+                acc += text.length + 1;
+            });
+        }
     });
 }
 
-function highlightParagraphByCharIndex(charIndex) {
-    const paras = Array.from(document.querySelectorAll('.story-paragraph'));
-    if (paras.length === 0) return;
+function highlightSentenceByCharIndex(charIndex) {
+    if (!sentenceOffsets || sentenceOffsets.length === 0) return;
     let idx = 0;
-    for (let i = 0; i < paragraphOffsets.length; i++) {
-        const start = paragraphOffsets[i];
-        const end = (i + 1 < paragraphOffsets.length) ? paragraphOffsets[i + 1] : Infinity;
+    for (let i = 0; i < sentenceOffsets.length; i++) {
+        const start = sentenceOffsets[i];
+        const end = (i + 1 < sentenceOffsets.length) ? sentenceOffsets[i + 1] : Infinity;
         if (charIndex >= start && charIndex < end) { idx = i; break; }
     }
-    paras.forEach((p, i) => p.classList.toggle('reading-highlight', i === idx));
+    sentenceElements.forEach((el, i) => {
+        try { el.classList.toggle('reading-highlight', i === idx); } catch (e) {}
+    });
 }
 
-function clearParagraphHighlights() {
-    document.querySelectorAll('.story-paragraph').forEach(p => p.classList.remove('reading-highlight'));
+function clearSentenceHighlights() {
+    document.querySelectorAll('.story-sentence').forEach(s => s.classList.remove('reading-highlight'));
 }
 
 // --- Playback ---
@@ -335,7 +363,7 @@ function startPlay() {
             try {
                 if (event && typeof event.charIndex === 'number') {
                     boundaryFired = true;
-                    highlightParagraphByCharIndex(event.charIndex);
+                    highlightSentenceByCharIndex(event.charIndex);
                 }
             } catch (e) { /* ignore */ }
         };
@@ -357,7 +385,7 @@ function startPlay() {
             try {
                 const totalChars = storyData.content.length || 1;
                 const currentChar = Math.floor(playbackProgress / 100 * totalChars);
-                highlightParagraphByCharIndex(currentChar);
+                highlightSentenceByCharIndex(currentChar);
             } catch (e) { /* ignore */ }
         }
         updateProgress();
@@ -375,7 +403,7 @@ function stopPlay() {
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     speechUtterance = null;
     boundaryFired = false;
-    clearParagraphHighlights();
+    try { clearSentenceHighlights(); } catch(e) {}
 }
 
 function seekAudio(event) {
@@ -389,7 +417,7 @@ function seekAudio(event) {
     try {
         const totalChars = storyData.content.length || 1;
         const currentChar = Math.floor(playbackProgress / 100 * totalChars);
-        highlightParagraphByCharIndex(currentChar);
+        highlightSentenceByCharIndex(currentChar);
     } catch (e) {}
 }
 
